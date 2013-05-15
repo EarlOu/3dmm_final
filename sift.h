@@ -1,0 +1,55 @@
+#ifndef SIFT_H
+#define SIFT_H
+#include <vector>
+using std::vector;
+
+struct Keypoint {
+	int ix, iy, is, o;
+	float x, y, sigma, orient;
+};
+
+struct Descriptor {
+	float v[128];
+};
+
+class Sift {
+public:
+	Sift(
+		float *_img, int _w, int _h,
+		int _octMin = -1, int _numOct = 3, int _lvPerScale = 3,
+		bool _useCL = false, bool _dumpImage = false
+	);
+	~Sift();
+	const vector<Keypoint> &extract_keypoints(float mth = 0.1f, float eth = 15.0f);
+	void calc_kp_angle(Keypoint &kps);
+	void calc_kp_angles(Keypoint *kps, int n);
+	void calc_kp_descriptor(const Keypoint &kps, Descriptor &des);
+	void calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess);
+	bool useCL, dumpImage;
+private:
+	bool hasGaussian, hasGrads;
+	float *img, *buffer;
+	float **blurred, **magAndThetas;
+	int w, h, wmax, hmax;
+	int octMin, numOct, lvPerScale;
+	float sigma0;
+	float eth, mth;
+
+	void init_gaussian_mem();
+	void init_gaussian_first();
+	void init_gaussian_build();
+	void dump_gaussian_build();
+	void init_gaussian_dog();
+	void dump_gaussian_dog();
+	void init_gaussian();
+
+	void detect_raw_keypoints();
+	void refine_keypoints();
+	void build_gradient_images();
+
+	void init_gradient();
+
+	vector<Keypoint> kps;
+};
+
+#endif
