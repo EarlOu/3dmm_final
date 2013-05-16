@@ -10,6 +10,8 @@ struct Keypoint {
 
 struct Descriptor {
 	float v[128];
+	void normalize();
+	void regularize();
 };
 
 class Sift {
@@ -30,7 +32,7 @@ private:
 	bool hasGaussian, hasGrads;
 	float *img, *buffer;
 	float **blurred, **dogs, **magAndThetas;
-	int w, h, wmax, hmax;
+	int imgw, imgh, wmax, hmax;
 	int octMin, numOct, lvPerScale;
 	float sigma0;
 	float eth, mth;

@@ -13,8 +13,8 @@ Sift::Sift(
 )
 {
 	img = _img;
-	wmax = w = _w;
-	hmax = h = _h;
+	wmax = imgw = _w;
+	hmax = imgh = _h;
 	octMin = _octMin;
 	if (octMin < 0) {
 		wmax <<= -octMin;
@@ -67,14 +67,14 @@ void Sift::init_gaussian_mem()
 void Sift::init_gaussian_first()
 {
 	if(octMin < 0) {
-		upSample2(blurred[0], img, buffer, w, h);
+		upSample2(blurred[0], img, buffer, imgw, imgh);
 		for (int o = 1; o < -octMin; ++o) {
-			upSample2(blurred[0], blurred[0], buffer, w<<o, h<<o);
+			upSample2(blurred[0], blurred[0], buffer, imgw<<o, imgh<<o);
 		}
 	} else if(octMin > 0) {
 		downSample(blurred[0], img, wmax, hmax, 1<<octMin);
 	} else {
-		memcpy(blurred[0], img, w*h*sizeof(float));
+		memcpy(blurred[0], img, imgw*imgh*sizeof(float));
 	}
 }
 
@@ -418,12 +418,142 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 	}
 }
 
+void Descriptor::normalize()
+{
+	float sqsum = 0.0f;
+	for (int i = 0; i < 128; ++i) {
+		sqsum += v[i] * v[i];
+	}
+	float inv = 1.0f/sqrt(sqsum);
+	for (int i = 0; i < 128; ++i) {
+		v[i] *= inv;
+	}
+}
+
+void Descriptor::regularize()
+{
+	normalize();
+	for (int i = 0; i < 128; ++i) {
+		if (v[i] > 0.2f) {
+			v[i] = 0.2f;
+		}
+	}
+	normalize();
+}
 
 void Sift::calc_kp_descriptor(const Keypoint &kp, Descriptor &des)
 {
 	if (!hasGrads) {
 		init_gradient();
 	}
+	int o = kp.o;
+	int s = kp.is;
+	float period = powf(2.0f, o);
+	int w = wmax >> o;
+	int h = hmax >> o;
+	float* gradImage = magAndThetas[o] + s*w*h;
+	float sigma = kp.sigma / period;
+	float floatX = kp.x / period;
+	float floatY = kp.y / period;
+	int intX = (int)(floatX + 0.5);
+	int intY = (int)(floatY + 0.5);
+
+	if (intX < 1 || intX >= h || intY < 1 || intY >= w) {
+		return;
+	}
+
+	// 8 orientations x 4 x 4 histogram array = 128 dimensions
+	const int NBO = 8; // number of orientations
+	const int NBP = 4; // number of small blocks
+	const float SBP = (3.0f * sigma); // size of a small block
+	const int W = (int)floor((SBP * (NBP+1) * sqrtf(0.5)) + 0.5); // W=SBP(NBP+1)/sqrt(2)
+
+	float angle0 = kp.orient;
+
+	const float st0 = sinf(angle0);
+	const float ct0 = cosf(angle0);
+
+	const int binto = 1;
+	const int binyo = NBO * NBP;
+	const int binxo = NBO;
+
+	memset(des.v, 0, NBO*NBP*NBP*sizeof(float));
+
+	/* Center the scale space and the descriptor on the current keypoint. 
+	 * Note that dpt is pointing to the bin of center (SBP/2,SBP/2,0).
+	 */
+	float const * pt = gradImage + (intX + intY * w) * 2;
+	float*       dpt = des.v + (NBP/2) * binyo + (NBP/2) * binxo ;
+
+#define atd(dbinx,dbiny,dbint) *(dpt + (dbint)*binto + (dbiny)*binyo + (dbinx)*binxo)
+
+
+	for (int i = MAX(-W, 1-intY); i < MIN(W+1, h-1-intY); ++i) {
+		for (int j = MAX(-W, 1-intX); j < MIN(W+1, w-1-intX); ++j) {
+			// start copying siftpp() ... so 'dy' and 'dx' conform to its convention
+			float dx = j + intX - floatX;
+			float dy = i + intY - floatY;
+
+			// for the sample point
+			float mod = gradImage[((intY + i) * w + (intX + j)) * 2];
+			float angle = gradImage[((intY + i)*w + (intX + j)) * 2+1];
+			float theta = (-angle + angle0);
+			if (theta < 0) {
+				theta += 2 * M_PI;
+			}
+
+			// get the displacement normalized w.r.t. the keypoint
+			// orientation and extension.
+			float nx = ( ct0 * dx + st0 * dy) / SBP ;
+			float ny = (-st0 * dx + ct0 * dy) / SBP ; 
+			float nt = NBO * theta / (2*M_PI) ;
+
+			// Get the gaussian weight of the sample. The gaussian window
+			// has a standard deviation equal to NBP/2. Note that dx and dy
+			// are in the normalized frame, so that -NBP/2 <= dx <= NBP/2.
+			float const wsigma = NBP/2 ;
+			float win = expf(-(nx*nx + ny*ny)/(2.0 * wsigma * wsigma)) ;
+
+			// The sample will be distributed in 8 adjacent bins.
+			// We start from the ``lower-left'' bin.
+			int binx = floorf( nx - 0.5 ) ;
+			int biny = floorf( ny - 0.5 ) ;
+			int bint = floorf( nt ) ;
+
+			//rbinx net result ==> (nx-0.5)-floor(nx-0.5)
+			//rbiny net result ==> (ny-0.5)-floor(ny-0.5)
+			float rbinx = nx - (binx+0.5) ;
+			float rbiny = ny - (biny+0.5) ;
+			float rbint = nt - bint ;
+			int dbinx ;
+			int dbiny ;
+			int dbint ;
+
+			// Distribute the current sample into the 8 adjacent bins
+			for(dbinx = 0 ; dbinx < 2 ; ++dbinx) {
+				for(dbiny = 0 ; dbiny < 2 ; ++dbiny) {
+					for(dbint = 0 ; dbint < 2 ; ++dbint) {
+
+						if( binx+dbinx >= -(NBP/2) &&
+							binx+dbinx <   (NBP/2) &&
+							biny+dbiny >= -(NBP/2) &&
+							biny+dbiny <   (NBP/2) ) {
+							float weight = win 
+								* mod 
+								* fabsf (1 - dbinx - rbinx)
+								* fabsf (1 - dbiny - rbiny)
+								* fabsf (1 - dbint - rbint) ;
+
+							atd(binx+dbinx, biny+dbiny, (bint+dbint) % NBO) += weight ;
+						}
+					}
+				}
+			}
+		}
+	}
+	/* End of copying siftpp */
+
+	des.regularize();
 }
 
 void Sift::calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess)
