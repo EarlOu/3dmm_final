@@ -4,7 +4,8 @@
 #define MAX(x, y) ((x)>(y)?(x):(y))
 #define MIN(x, y) ((x)<(y)?(x):(y))
 
-void diff(float *octave3d, int s, int w, int h);
+void diff(float *dog, float *blurred, int s, int w, int h);
+void build_gradient_map(float *map, float *dog, int s, int w, int h);
 void upSample2(float *dst, float *src, float *buf, int w, int h);
 void downSample(float *dst, float *src, int w, int h, int d);
 void conv1D_symm_and_transpose(

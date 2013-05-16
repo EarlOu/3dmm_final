@@ -38,9 +38,11 @@ Sift::~Sift()
 		delete[] buffer;
 		for (int i = 0; i < numOct; ++i) {
 			delete[] blurred[i];
+			delete[] dog[i];
 		}
 
 		delete[] blurred;
+		delete[] dog;
 	}
 	if (hasGrads) {
 		delete[] magAndThetas;
@@ -53,8 +55,10 @@ void Sift::init_gaussian_mem()
 	int htmp = hmax;
 	buffer = new float[wtmp*htmp];
 	blurred = new float*[numOct];
+	dog = new float*[numOct];
 	for (int i = 0; i < numOct; ++i) {
 		blurred[i] = new float[wtmp * htmp * (lvPerScale+3)];
+		dog[i] = new float[wtmp * htmp * (lvPerScale+2)];
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -111,7 +115,7 @@ void Sift::init_gaussian_dog()
 	int wtmp = wmax;
 	int htmp = hmax;
 	for (int o = 0; o < numOct; ++o) {
-		diff(blurred[o], lvPerScale+3, wtmp, htmp);
+		diff(dog[o], blurred[o], lvPerScale+3, wtmp, htmp);
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -190,7 +194,7 @@ void Sift::detect_raw_keypoints()
 		for (int s = 1; s < (lvPerScale + 1); ++s) {
 			for (int i = 1; i < (htmp - 1); ++i) {
 				for (int j = 1; j < (wtmp - 1); ++j) {
-					float *imgbase = blurred[o]+(s*wtmp*htmp);
+					float *imgbase = dog[o]+(s*wtmp*htmp);
 #define CHECK_EXTREMA(OPER, THRES, PTR, IMAGE_SIZE, LINE_SIZE) ( \
 	(*(PTR) OPER THRES)                               &&         \
 	(*(PTR) OPER *(PTR - LINE_SIZE - 1))              &&         \
@@ -254,7 +258,7 @@ void Sift::refine_keypoints()
 		s = kps[i].is;
 		w = wmax >> o;
 		h = hmax >> o;
-		point = blurred[o] + s*w*h + (y*w+x);
+		point = dog[o] + s*w*h + (y*w+x);
 
 		build_gradient(gradient, point, w, h);
 		build_hessian(hessian, point, w, h);
@@ -296,8 +300,35 @@ const vector<Keypoint> &Sift::extract_keypoints(float _mth, float _eth)
 	return kps;
 }
 
+void Sift::init_gradient_mem()
+{
+	int wtmp = wmax;
+	int htmp = hmax;
+	magAndThetas = new float*[numOct];
+	for (int i = 0; i < numOct; ++i) {
+		magAndThetas[i] = new float[2*wtmp*htmp*lvPerScale];
+		wtmp >>= 1;
+		htmp >>= 1;
+	}
+}
+
+void Sift::init_gradient_build()
+{
+	int wtmp = wmax;
+	int htmp = hmax;
+	for (int o = 0; o < numOct; ++o) {
+		int imgsiz = wtmp*htmp;
+		build_gradient_map(magAndThetas[o], blurred[o]+imgsiz, lvPerScale, wtmp, htmp)
+		wtmp >>= 1;
+		htmp >>= 1;
+	}
+}
+
 void Sift::init_gradient()
 {
+	hasGrads = true;
+	init_gradient_mem();
+	init_gradient_build();
 }
 
 void Sift::calc_kp_angle(Keypoint &kps)

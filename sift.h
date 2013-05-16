@@ -29,7 +29,7 @@ public:
 private:
 	bool hasGaussian, hasGrads;
 	float *img, *buffer;
-	float **blurred, **magAndThetas;
+	float **blurred, **dogs, **magAndThetas;
 	int w, h, wmax, hmax;
 	int octMin, numOct, lvPerScale;
 	float sigma0;
@@ -47,6 +47,8 @@ private:
 	void refine_keypoints();
 	void build_gradient_images();
 
+	void init_gradient_mem();
+	void init_gradient_build();
 	void init_gradient();
 
 	vector<Keypoint> kps;
