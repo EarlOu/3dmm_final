@@ -38,11 +38,11 @@ Sift::~Sift()
 		delete[] buffer;
 		for (int i = 0; i < numOct; ++i) {
 			delete[] blurred[i];
-			delete[] dog[i];
+			delete[] dogs[i];
 		}
 
 		delete[] blurred;
-		delete[] dog;
+		delete[] dogs;
 	}
 	if (hasGrads) {
 		delete[] magAndThetas;
@@ -55,10 +55,10 @@ void Sift::init_gaussian_mem()
 	int htmp = hmax;
 	buffer = new float[wtmp*htmp];
 	blurred = new float*[numOct];
-	dog = new float*[numOct];
+	dogs = new float*[numOct];
 	for (int i = 0; i < numOct; ++i) {
 		blurred[i] = new float[wtmp * htmp * (lvPerScale+3)];
-		dog[i] = new float[wtmp * htmp * (lvPerScale+2)];
+		dogs[i] = new float[wtmp * htmp * (lvPerScale+2)];
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -115,7 +115,7 @@ void Sift::init_gaussian_dog()
 	int wtmp = wmax;
 	int htmp = hmax;
 	for (int o = 0; o < numOct; ++o) {
-		diff(dog[o], blurred[o], lvPerScale+3, wtmp, htmp);
+		diff(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -160,7 +160,7 @@ void Sift::dump_gaussian_dog()
 			char buf[128];
 			sprintf(buf, "d_%d_%d.pgm", o, s);
 			FILE *fp = fopen(buf, "wb");
-			float *based = blurred[o] + s*imgSiz;
+			float *based = dogs[o] + s*imgSiz;
 			for (int i = 0; i < imgSiz; ++i) {
 				wrbuf[i] = based[i]*256.0f + 128.0f;
 			}
@@ -191,10 +191,10 @@ void Sift::detect_raw_keypoints()
 		// detect feature points (search for 26 neighboring points)
 		int image_size = wtmp*htmp;
 		int line_size = wtmp;
-		for (int s = 1; s < (lvPerScale + 1); ++s) {
+		for (int s = 1; s < lvPerScale+1; ++s) {
 			for (int i = 1; i < (htmp - 1); ++i) {
 				for (int j = 1; j < (wtmp - 1); ++j) {
-					float *imgbase = dog[o]+(s*wtmp*htmp);
+					float *imgbase = dogs[o]+(s*wtmp*htmp);
 #define CHECK_EXTREMA(OPER, THRES, PTR, IMAGE_SIZE, LINE_SIZE) ( \
 	(*(PTR) OPER THRES)                               &&         \
 	(*(PTR) OPER *(PTR - LINE_SIZE - 1))              &&         \
@@ -229,7 +229,7 @@ void Sift::detect_raw_keypoints()
 						key.o = o;
 						key.ix = j;
 						key.iy = i;
-						key.is = s;
+						key.is = s-1;
 						kps.push_back(key);
 					}
 				}
@@ -258,7 +258,7 @@ void Sift::refine_keypoints()
 		s = kps[i].is;
 		w = wmax >> o;
 		h = hmax >> o;
-		point = dog[o] + s*w*h + (y*w+x);
+		point = dogs[o] + (s+1)*w*h + (y*w+x);
 
 		build_gradient(gradient, point, w, h);
 		build_hessian(hessian, point, w, h);
@@ -318,7 +318,7 @@ void Sift::init_gradient_build()
 	int htmp = hmax;
 	for (int o = 0; o < numOct; ++o) {
 		int imgsiz = wtmp*htmp;
-		build_gradient_map(magAndThetas[o], blurred[o]+imgsiz, lvPerScale, wtmp, htmp)
+		build_gradient_map(magAndThetas[o], blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -331,11 +331,83 @@ void Sift::init_gradient()
 	init_gradient_build();
 }
 
-void Sift::calc_kp_angle(Keypoint &kps)
+void Sift::calc_kp_angle(Keypoint &kp)
 {
-	if (hasGrads) {
+	if (!hasGrads) {
 		init_gradient();
 	}
+
+	int o = kp.o;
+	int s = kp.is;
+	float period = powf(2.0f, o);
+	float sigmaW = 1.5f * (kp.sigma / period);
+	int windowSize = 3 * sigmaW;
+	if (windowSize <= 0) {
+		windowSize = 1;
+	}
+	int w = wmax>>o;
+	int h = hmax>>o;
+	float* gradImage = magAndThetas[o] + s*w*h;
+	float floatX = kp.x / period;
+	float floatY = kp.y / period;
+	int intX = (int)(floatX + 0.5);
+	int intY = (int)(floatY + 0.5);
+
+	if (intX < 1 || intX >= w || intY < 1 || intY >= h) {
+		return;
+	}
+
+	// compute histogram
+	const int histSize = 36;
+	float hist[histSize];
+	memset(hist, 0, histSize * sizeof(float));
+	for (int j=MAX(1-intY, -windowSize); j < MIN(h-1-intY, windowSize+1); ++j) {
+		for (int i=MAX(1-intX, -windowSize); i < MIN(w-1-intX, windowSize+1); ++i) {
+			float dx = i + intX - floatX;
+			float dy = j + intY - floatY;
+			float r2 = dx*dx + dy*dy;
+			if (r2 >= (windowSize * windowSize) + 0.5) { // only compute within circle
+				continue;
+			}
+			float weight = expf(-r2 / (2*sigmaW*sigmaW));
+			float magnitude = gradImage[((intX + i) + (intY + j) * w) * 2];
+			float angle = gradImage[((intX + i) + (intY + j) * w) * 2 + 1];
+			int binIndex = (int)(angle / (2 * M_PI) * histSize) % histSize;
+			hist[binIndex] += magnitude * weight;
+		}
+	}
+
+	// box filter smoothing
+	for (int i = 0; i < 5; ++i) {
+		float prevCache;
+		float currCache = hist[histSize - 1];
+		float first = hist[0];
+		int j;
+		for (j = 0; j < (histSize - 1); ++j) {
+			prevCache = currCache;
+			currCache = hist[j];
+			hist[j] = (prevCache + hist[j] + hist[j+1]) / 3.0f;
+		}
+		hist[j] = (currCache + hist[j] + first) / 3.0f;
+	}
+
+	// find histogram maximum
+	int maxBinIndex;
+	float maxBallot = 0.0f;
+	for (int i = 0; i < histSize; ++i) {
+		if (hist[i] > maxBallot) {
+			maxBallot = hist[i];
+			maxBinIndex = i;
+		}
+	}
+
+	// quadratic interpolation
+	float self = hist[maxBinIndex];
+	float left = (maxBinIndex == 0)? hist[histSize-1] : hist[maxBinIndex-1];
+	float right = (maxBinIndex == histSize)? hist[0] : hist[maxBinIndex+1];
+	float dx = 0.5 * (right - left);
+	float dxx = (right + left - (2 * self));
+	kp.orient = (maxBinIndex + 0.5 - (dx / dxx)) * (2 * M_PI / histSize);
 }
 
 void Sift::calc_kp_angles(Keypoint *kps, int n)
@@ -347,9 +419,9 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 }
 
 
-void Sift::calc_kp_descriptor(const Keypoint &kps, Descriptor &des)
+void Sift::calc_kp_descriptor(const Keypoint &kp, Descriptor &des)
 {
-	if (hasGrads) {
+	if (!hasGrads) {
 		init_gradient();
 	}
 }

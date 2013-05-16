@@ -3,12 +3,12 @@
 #include <cmath>
 #include "utils.h"
 
-void diff(float *dog, float *blurred, int s, int w, int h);
+void diff(float *dog, float *blurred, int s, int w, int h)
 {
 	for (int i = 0; i < (s-1)*w*h; ++i) {
-		octave3d[0] = blurred[w*h] - blurred[0];
+		dog[0] = blurred[w*h] - blurred[0];
 		++blurred;
-		++octave3d;
+		++dog;
 	}
 }
 
@@ -24,15 +24,15 @@ void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 				float dx = 0.5 * (blurred[1] - blurred[-1]);
 				float dy = 0.5 * (blurred[w] - blurred[-w]);
 				++blurred;
-				theta = atan2f(dy, dx);
+				float theta = atan2f(dy, dx);
 				if (theta < 0) {
 					theta += 2 * M_PI;
 				}
 
-				++map;
 				*map = sqrtf(dx * dx + dy * dy);
 				++map;
 				*map = theta;
+				++map;
 			}
 			map += 2;
 			++blurred;

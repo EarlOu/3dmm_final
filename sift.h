@@ -21,9 +21,9 @@ public:
 	);
 	~Sift();
 	const vector<Keypoint> &extract_keypoints(float mth = 0.1f, float eth = 15.0f);
-	void calc_kp_angle(Keypoint &kps);
+	void calc_kp_angle(Keypoint &kp);
 	void calc_kp_angles(Keypoint *kps, int n);
-	void calc_kp_descriptor(const Keypoint &kps, Descriptor &des);
+	void calc_kp_descriptor(const Keypoint &kp, Descriptor &des);
 	void calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess);
 	bool useCL, dumpImage;
 private:
