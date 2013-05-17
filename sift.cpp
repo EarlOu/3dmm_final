@@ -8,6 +8,14 @@
 #include <cstdio>
 
 #include <omp.h>
+#include <CL/cl.h>
+
+struct CLStruct {
+	cl_platform_id platform;
+	cl_device_id device;
+	cl_context context;
+	cl_command_queue cqueue;
+};
 
 Sift::Sift(
 	float *_img, int _w, int _h, AccerModel _accel,
@@ -32,11 +40,35 @@ Sift::Sift(
 	hasGaussian = hasGrads = false;
 	accel = _accel;
 	dumpImage = _dumpImage;
+
+	cls = new CLStruct;
+#define ABORT_IF(COND, STR)\
+	if (COND) {\
+		printf(STR);\
+		abort();\
+	}
+	if (accel == Accel_OCL) {
+		cl_int cle;
+
+		cle = clGetPlatformIDs(1, &cls->platform, NULL);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot get OpenCL platform ID\n");
+
+		cle = clGetDeviceIDs(cls->platform, CL_DEVICE_TYPE_GPU, 1, &cls->device, NULL);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot get OpenCL device ID\n");
+
+		cls->context = clCreateContext(0, 1, &cls->device, NULL, NULL, &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->context, "Cannot create OpenCL context\n");
+
+		cls->cqueue = clCreateCommandQueue(cls->context, cls->device, 0, &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->cqueue, "Cannot create OpenCL Command queue\n");
+	}
+#undef ABORT_IF
 	init_gaussian();
 }
 
 Sift::~Sift()
 {
+	delete cls;
 	if (hasGaussian) {
 		delete[] buffer;
 		for (int i = 0; i < numOct; ++i) {

@@ -3,6 +3,8 @@
 #include <vector>
 using std::vector;
 
+struct CLStruct;
+
 struct Keypoint {
 	int ix, iy, is, o;
 	float x, y, sigma, orient;
@@ -61,6 +63,7 @@ private:
 	void init_gradient();
 
 	vector<Keypoint> kps;
+	CLStruct *cls;
 };
 
 #endif
