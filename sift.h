@@ -14,12 +14,18 @@ struct Descriptor {
 	void regularize();
 };
 
+enum AccerModel {
+	Accel_None = 0,
+	Accel_OMP,
+	Accel_OCL
+};
+
 class Sift {
 public:
 	Sift(
-		float *_img, int _w, int _h,
+		float *_img, int _w, int _h, AccerModel acc = Accel_None,
 		int _octMin = -1, int _numOct = 3, int _lvPerScale = 3,
-		bool _useCL = false, bool _dumpImage = false
+		bool _dumpImage = false
 	);
 	~Sift();
 	const vector<Keypoint> &extract_keypoints(float mth = 0.1f, float eth = 15.0f);
@@ -27,9 +33,10 @@ public:
 	void calc_kp_angles(Keypoint *kps, int n);
 	void calc_kp_descriptor(const Keypoint &kp, Descriptor &des);
 	void calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess);
-	bool useCL, dumpImage;
+	bool dumpImage;
 private:
 	bool hasGaussian, hasGrads;
+	AccerModel accel;
 	float *img, *buffer;
 	float **blurred, **dogs, **magAndThetas;
 	int imgw, imgh, wmax, hmax;

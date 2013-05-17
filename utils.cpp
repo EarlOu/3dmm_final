@@ -12,6 +12,20 @@ void diff(float *dog, float *blurred, int s, int w, int h)
 	}
 }
 
+void diff_OMP(float *dog, float *blurred, int s, int w, int h)
+{
+	float *d, *b;
+#pragma omp parallel private(b, d)
+	for (int i = 0; i < (s-1); ++i) {
+		d = dog + i*w*h;
+		b = blurred + i*w*h;
+#pragma omp for
+		for (int j = 0; j < w*h; ++j) {
+			d[j] = b[j+w*h] - b[j];
+		}
+	}
+}
+
 void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 {
 	for (int s = 0; s < _s; ++s) {
@@ -124,8 +138,19 @@ void gaussian_blur(float *out, float *in, float *buf, int w, int h,
 	conv1D_symm_and_transpose(out, buf, h, w, kernelSize, kernel);
 
 	delete[] kernel;
+}
 
-	return;
+void gaussian_blur_OMP(float *out, float *in, float *buf, int w, int h,
+	float sigma)
+{
+	float* kernel;
+	int kernelSize = generate_1D_gaussian_kernel(kernel, sigma);
+
+	// cal the kernel
+	conv1D_symm_and_transpose_OMP(buf,  in, w, h, kernelSize, kernel);
+	conv1D_symm_and_transpose_OMP(out, buf, h, w, kernelSize, kernel);
+
+	delete[] kernel;
 }
 
 void conv1D_symm_and_transpose(float *out, float *in, int w, int h,
@@ -147,7 +172,27 @@ void conv1D_symm_and_transpose(float *out, float *in, int w, int h,
 			out[j*h+i] = sum;
 		}
 	}
-	return;
+}
+
+void conv1D_symm_and_transpose_OMP(float *out, float *in, int w, int h,
+	int kernelSize, float *kernel)
+{
+#pragma omp parallel for
+	for (int i = 0; i < h; ++i) {
+		for (int j = 0; j < w; ++j) {
+			float sum = 0.0f;
+			for (int k = (j-kernelSize); k < 0; ++k) {
+				sum += in[i*w] * kernel[k-j+kernelSize];
+			}
+			for (int k = MAX(0, j-kernelSize); k < MIN(w, j+kernelSize+1); ++k) {
+				sum += in[i*w+k] * kernel[k-j+kernelSize];
+			}
+			for (int k = w; k < (j+kernelSize+1); ++k) {
+				sum += in[i*w+w-1] * kernel[k-j+kernelSize];
+			}
+			out[j*h+i] = sum;
+		}
+	}
 }
 
 void inv_3d_matrix(float* dst, float* src)

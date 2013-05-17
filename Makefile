@@ -1,7 +1,7 @@
-CFLAGS=-c -g
+CFLAGS=-c -g -fopenmp
 
 all: main.o sift.o utils.o pgm.o
-	g++ *.o
+	g++ *.o -fopenmp
 
 main.o: main.cpp sift.h
 	g++ $< $(CFLAGS)

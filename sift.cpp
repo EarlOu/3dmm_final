@@ -2,14 +2,17 @@
 #include "utils.h"
 #include "pgm.h"
 
+#include <ctime>
 #include <cstring>
 #include <cmath>
 #include <cstdio>
 
+#include <omp.h>
+
 Sift::Sift(
-	float *_img, int _w, int _h,
+	float *_img, int _w, int _h, AccerModel _accel,
 	int _octMin, int _numOct, int _lvPerScale,
-	bool _useCL, bool _dumpImage
+	bool _dumpImage
 )
 {
 	img = _img;
@@ -27,7 +30,7 @@ Sift::Sift(
 	lvPerScale = _lvPerScale;
 	sigma0 = 1.6f * powf(2.0f, 1.0f/lvPerScale);
 	hasGaussian = hasGrads = false;
-	useCL = _useCL;
+	accel = _accel;
 	dumpImage = _dumpImage;
 	init_gaussian();
 }
@@ -86,14 +89,26 @@ void Sift::init_gaussian_build()
 	float sigmak = powf(2.0f, 1.0f/lvPerScale);
 	float dsigma0 = sigma0 * sqrtf(1.0f - 1.0f/(sigmak*sigmak));
 	float dsigmar = sigmak;
+	double c1, c2;
+	c1 = omp_get_wtime();
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
 		for(int s = 0 ; s <= lvPerScale+1; ++s) {
-			gaussian_blur(
-				blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
-				buffer, wtmp, htmp, sigma
-			);
+			switch (accel) {
+			case Accel_None:
+				gaussian_blur(
+					blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
+					buffer, wtmp, htmp, sigma
+				);
+				break;
+			case Accel_OMP:
+				gaussian_blur_OMP(
+					blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
+					buffer, wtmp, htmp, sigma
+				);
+				break;
+			}
 			sigma *= dsigmar;
 		}
 
@@ -104,6 +119,8 @@ void Sift::init_gaussian_build()
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
+	c2 = omp_get_wtime();
+	printf("Calculate Gaussian blur %lf\n", c2-c1);
 
 	if (dumpImage) {
 		dump_gaussian_build();
@@ -114,11 +131,22 @@ void Sift::init_gaussian_dog()
 {
 	int wtmp = wmax;
 	int htmp = hmax;
+	double c1, c2;
+	c1 = omp_get_wtime();
 	for (int o = 0; o < numOct; ++o) {
-		diff(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
+		switch (accel) {
+		case Accel_None:
+			diff(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
+			break;
+		case Accel_OMP:
+			diff_OMP(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
+			break;
+		}
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
+	c2 = omp_get_wtime();
+	printf("Calculate diff kernel %lf\n", c2-c1);
 
 	if (dumpImage) {
 		dump_gaussian_dog();

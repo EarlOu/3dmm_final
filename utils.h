@@ -5,13 +5,18 @@
 #define MIN(x, y) ((x)<(y)?(x):(y))
 
 void diff(float *dog, float *blurred, int s, int w, int h);
+void diff_OMP(float *dog, float *blurred, int s, int w, int h);
 void build_gradient_map(float *map, float *dog, int s, int w, int h);
 void upSample2(float *dst, float *src, float *buf, int w, int h);
 void downSample(float *dst, float *src, int w, int h, int d);
 void conv1D_symm_and_transpose(
 	float *out, float *in, int w, int h,
 	int kernelSize, float *kernel);
+void conv1D_symm_and_transpose_OMP(
+	float *out, float *in, int w, int h,
+	int kernelSize, float *kernel);
 void gaussian_blur(float *out, float *in, float *buf, int w, int h, float sigma);
+void gaussian_blur_OMP(float *out, float *in, float *buf, int w, int h, float sigma);
 void matrix_multiply(float* y, float* A, float* x);
 void rotate_point(float& dstX, float& dstY, float srcX, float srcY,float theta);
 void build_hessian(float* hessian, float* point, int w, int h);

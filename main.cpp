@@ -13,7 +13,8 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < w*h; ++i) {
 		img[i] = p[i] * inv255;
 	}
-	Sift s(img, w, h, 0, 4, 3, false, true);
+	// Sift s(img, w, h, Accel_OMP, 0, 3, 3, false);
+	Sift s(img, w, h, Accel_None, 0, 3, 3, false);
 	vector<Keypoint> kps = s.extract_keypoints(0.005f, 10.0f);
 	delete[] img;
 	fclose(fp);
