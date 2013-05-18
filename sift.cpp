@@ -7,6 +7,7 @@
 #include <cstring>
 #include <cmath>
 #include <cstdio>
+#include <cfloat>
 #include <omp.h>
 
 Sift::Sift(
@@ -330,7 +331,7 @@ void Sift::refine_keypoints()
 	float hessianInv[9]; // inverse of hessian
 
 	int dst = 0;
-	for (int i = 0; i < kps.size(); ++i) {
+	for (size_t i = 0; i < kps.size(); ++i) {
 		o = kps[i].o;
 		x = kps[i].ix;
 		y = kps[i].iy;
@@ -426,13 +427,14 @@ void Sift::calc_kp_angle(Keypoint &kp)
 	}
 	int w = wmax>>o;
 	int h = hmax>>o;
-	float* gradImage = magAndThetas[o] + s*w*h;
+	const float* gradImage = magAndThetas[o] + 2*s*w*h;
 	float floatX = kp.x / period;
 	float floatY = kp.y / period;
 	int intX = (int)(floatX + 0.5);
 	int intY = (int)(floatY + 0.5);
 
 	if (intX < 1 || intX >= w || intY < 1 || intY >= h) {
+		printf("??\n");
 		return;
 	}
 
@@ -472,7 +474,7 @@ void Sift::calc_kp_angle(Keypoint &kp)
 
 	// find histogram maximum
 	int maxBinIndex;
-	float maxBallot = 0.0f;
+	float maxBallot = -FLT_MAX;
 	for (int i = 0; i < histSize; ++i) {
 		if (hist[i] > maxBallot) {
 			maxBallot = hist[i];
@@ -483,18 +485,39 @@ void Sift::calc_kp_angle(Keypoint &kp)
 	// quadratic interpolation
 	float self = hist[maxBinIndex];
 	float left = (maxBinIndex == 0)? hist[histSize-1] : hist[maxBinIndex-1];
-	float right = (maxBinIndex == histSize)? hist[0] : hist[maxBinIndex+1];
+	float right = (maxBinIndex == histSize-1)? hist[0] : hist[maxBinIndex+1];
 	float dx = 0.5 * (right - left);
 	float dxx = (right + left - (2 * self));
 	kp.orient = (maxBinIndex + 0.5 - (dx / dxx)) * (2 * M_PI / histSize);
+#undef histSize
 }
 
 void Sift::calc_kp_angles(Keypoint *kps, int n)
 {
-	for (int i = 0; i < n; ++i) {
-		calc_kp_angle(*kps);
-		++kps;
+	double c1, c2;
+	c1 = omp_get_wtime();
+	switch (accel) {
+	case Accel_None:
+		for (int i = 0; i < n; ++i) {
+			calc_kp_angle(*kps);
+			++kps;
+		}
+		break;
+	case Accel_OMP:
+	case Accel_OCL:
+		if (!hasGrads) {
+			init_gradient();
+		}
+		omp_set_num_threads(1);
+#pragma omp parallel for schedule(dynamic, 32)
+		for (int i = 0; i < n; ++i) {
+			calc_kp_angle(kps[i]);
+		}
+		omp_set_num_threads(2);
+		break;
 	}
+	c2 = omp_get_wtime();
+	printf("Calculate angles %lf\n", c2-c1);
 }
 
 void Descriptor::normalize()
@@ -530,7 +553,7 @@ void Sift::calc_kp_descriptor(const Keypoint &kp, Descriptor &des)
 	float period = powf(2.0f, o);
 	int w = wmax >> o;
 	int h = hmax >> o;
-	float* gradImage = magAndThetas[o] + s*w*h;
+	float* gradImage = magAndThetas[o] + s*w*h*2;
 	float sigma = kp.sigma / period;
 	float floatX = kp.x / period;
 	float floatY = kp.y / period;
@@ -637,10 +660,24 @@ void Sift::calc_kp_descriptor(const Keypoint &kp, Descriptor &des)
 
 void Sift::calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess)
 {
-	for (int i = 0; i < n; ++i) {
-		calc_kp_descriptor(*kps, *dess);
-		++kps;
-		++dess;
+	double c1, c2;
+	c1 = omp_get_wtime();
+	switch (accel) {
+	case Accel_None:
+		for (int i = 0; i < n; ++i) {
+			calc_kp_descriptor(*kps, *dess);
+			++kps;
+			++dess;
+		}
+		break;
+	case Accel_OMP:
+	case Accel_OCL:
+#pragma omp parallel for schedule(dynamic, 64)
+		for (int i = 0; i < n; ++i) {
+			calc_kp_descriptor(kps[i], dess[i]);
+		}
 	}
+	c2 = omp_get_wtime();
+	printf("Calculate descriptors %lf\n", c2-c1);
 }
 
