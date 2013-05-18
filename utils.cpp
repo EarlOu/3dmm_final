@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <cmath>
 #include "utils.h"
+#include "clstruct.h"
 
 void diff(float *dog, float *blurred, int s, int w, int h)
 {
@@ -24,6 +25,36 @@ void diff_OMP(float *dog, float *blurred, int s, int w, int h)
 			d[j] = b[j+w*h] - b[j];
 		}
 	}
+}
+
+void diff_OCL(float *dog, const float *blurred, int s, int w, int h, CLStruct *cls)
+{
+	cl_int cle;
+	cl_mem blurred_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float)*w*h*s, NULL, NULL);
+	cl_mem dog_d = clCreateBuffer(cls->context, CL_MEM_WRITE_ONLY, sizeof(float)*w*h*(s-1), NULL, NULL);
+	ABORT_IF(!blurred_d || !dog_d, "Cannot allocate device memory\n");
+	cle = clEnqueueWriteBuffer(cls->cqueue, blurred_d, CL_TRUE, 0, sizeof(float)*w*h*s, blurred, 0, NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot copy memory to device\n");
+
+	cle  = clSetKernelArg(cls->diff, 0, sizeof(cl_mem), &dog_d);
+	cle |= clSetKernelArg(cls->diff, 1, sizeof(cl_mem), &blurred_d);
+	cle |= clSetKernelArg(cls->diff, 2, sizeof(int), &s);
+	cle |= clSetKernelArg(cls->diff, 3, sizeof(int), &w);
+	cle |= clSetKernelArg(cls->diff, 4, sizeof(int), &h);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot set \"diff\" kernel parameter\n");
+
+	size_t _g = (((w-1)>>7)+1)<<7, _l = 1<<7;
+	cle = clEnqueueNDRangeKernel(
+		cls->cqueue, cls->diff, 1, NULL,
+		&_g, &_l, 0, NULL, NULL
+	);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot launch \"diff\" kernel\n");
+
+	clFinish(cls->cqueue);
+
+	// Read back the results from the device to verify the output
+	cle = clEnqueueReadBuffer(cls->cqueue, dog_d, CL_TRUE, 0, sizeof(float)*w*h*(s-1), dog, 0, NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
 }
 
 void build_gradient_map(float *map, float *blurred, int _s, int w, int h)

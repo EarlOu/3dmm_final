@@ -1,21 +1,13 @@
 #include "sift.h"
 #include "utils.h"
 #include "pgm.h"
+#include "clstruct.h"
 
 #include <ctime>
 #include <cstring>
 #include <cmath>
 #include <cstdio>
-
 #include <omp.h>
-#include <CL/cl.h>
-
-struct CLStruct {
-	cl_platform_id platform;
-	cl_device_id device;
-	cl_context context;
-	cl_command_queue cqueue;
-};
 
 Sift::Sift(
 	float *_img, int _w, int _h, AccerModel _accel,
@@ -42,11 +34,6 @@ Sift::Sift(
 	dumpImage = _dumpImage;
 
 	cls = new CLStruct;
-#define ABORT_IF(COND, STR)\
-	if (COND) {\
-		printf(STR);\
-		abort();\
-	}
 	if (accel == Accel_OCL) {
 		cl_int cle;
 
@@ -61,8 +48,36 @@ Sift::Sift(
 
 		cls->cqueue = clCreateCommandQueue(cls->context, cls->device, 0, &cle);
 		ABORT_IF(cle != CL_SUCCESS || !cls->cqueue, "Cannot create OpenCL Command queue\n");
+
+		FILE *shaderFp = fopen("sift.cl", "r");
+		ABORT_IF(!shaderFp, "Cannot open OpenCL shader\n");
+
+		fseek(shaderFp, 0, SEEK_END);
+		int fleng = ftell(shaderFp);
+		fseek(shaderFp, 0, SEEK_SET);
+		char *shader = new char [fleng+1];
+		shader[fleng] = '\0';
+		fread(shader, 1, fleng, shaderFp);
+
+		cls->program = clCreateProgramWithSource(cls->context, 1, (const char**)&shader, NULL, &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->program, "Cannot create program\n");
+
+		cle = clBuildProgram(cls->program, 0, NULL, NULL, NULL, NULL);
+		if (cle != CL_SUCCESS) {
+			size_t len;
+			char buffer[2048];
+
+			printf("Cannot build program\n");
+			clGetProgramBuildInfo(cls->program, cls->device, CL_PROGRAM_BUILD_LOG, sizeof(buffer), buffer, &len);
+			printf("%s\n", buffer);
+			abort();
+		}
+
+		cls->diff = clCreateKernel(cls->program, "diff", &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->program, "Cannot find \"diff\" OCL kernel\n");
+
+		delete[] shader;
 	}
-#undef ABORT_IF
 	init_gaussian();
 }
 
@@ -135,6 +150,7 @@ void Sift::init_gaussian_build()
 				);
 				break;
 			case Accel_OMP:
+			case Accel_OCL:
 				gaussian_blur_OMP(
 					blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
 					buffer, wtmp, htmp, sigma
@@ -172,6 +188,9 @@ void Sift::init_gaussian_dog()
 			break;
 		case Accel_OMP:
 			diff_OMP(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
+			break;
+		case Accel_OCL:
+			diff_OCL(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp, cls);
 			break;
 		}
 		wtmp >>= 1;

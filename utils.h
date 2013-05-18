@@ -4,8 +4,11 @@
 #define MAX(x, y) ((x)>(y)?(x):(y))
 #define MIN(x, y) ((x)<(y)?(x):(y))
 
+struct CLStruct;
+
 void diff(float *dog, float *blurred, int s, int w, int h);
 void diff_OMP(float *dog, float *blurred, int s, int w, int h);
+void diff_OCL(float *dog, const float *blurred, int s, int w, int h, CLStruct *cls);
 void build_gradient_map(float *map, float *dog, int s, int w, int h);
 void upSample2(float *dst, float *src, float *buf, int w, int h);
 void downSample(float *dst, float *src, int w, int h, int d);
