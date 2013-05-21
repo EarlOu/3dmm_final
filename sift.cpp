@@ -74,8 +74,11 @@ Sift::Sift(
 			abort();
 		}
 
+		cls->gaussian = clCreateKernel(cls->program, "conv_and_trans", &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->gaussian, "Cannot find \"conv\" OCL kernel\n");
+
 		cls->diff = clCreateKernel(cls->program, "diff", &cle);
-		ABORT_IF(cle != CL_SUCCESS || !cls->program, "Cannot find \"diff\" OCL kernel\n");
+		ABORT_IF(cle != CL_SUCCESS || !cls->diff, "Cannot find \"diff\" OCL kernel\n");
 
 		delete[] shader;
 	}
@@ -139,6 +142,8 @@ void Sift::init_gaussian_build()
 	float dsigmar = sigmak;
 	double c1, c2;
 	c1 = omp_get_wtime();
+	cl_mem mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
+	cl_mem mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
@@ -151,11 +156,23 @@ void Sift::init_gaussian_build()
 				);
 				break;
 			case Accel_OMP:
-			case Accel_OCL:
 				gaussian_blur_OMP(
 					blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
 					buffer, wtmp, htmp, sigma
 				);
+				break;
+			case Accel_OCL:
+				cl_int cle;
+				if (s == 0) {
+					cle = clEnqueueWriteBuffer(cls->cqueue, mem_img, CL_TRUE, 0, sizeof(float)*wtmp*htmp, blurred[o], 0, NULL, NULL);
+					ABORT_IF(cle != CL_SUCCESS, "Cannot write gaussian base image\n");
+				}
+				gaussian_blur_OCL(
+					mem_img, mem_img, mem_buf,
+					wtmp, htmp, sigma, cls
+				);
+				cle = clEnqueueReadBuffer(cls->cqueue, mem_img, CL_TRUE, 0, sizeof(float)*wtmp*htmp, blurred[o]+wtmp*htmp*(1+s), 0, NULL, NULL);
+				ABORT_IF(cle != CL_SUCCESS, "Cannot read blurred result\n");
 				break;
 			}
 			sigma *= dsigmar;
@@ -168,6 +185,9 @@ void Sift::init_gaussian_build()
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
+
+	clReleaseMemObject(mem_img);
+	clReleaseMemObject(mem_buf);
 	c2 = omp_get_wtime();
 	printf("Calculate Gaussian blur %lf\n", c2-c1);
 

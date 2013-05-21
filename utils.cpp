@@ -55,6 +55,9 @@ void diff_OCL(float *dog, const float *blurred, int s, int w, int h, CLStruct *c
 	// Read back the results from the device to verify the output
 	cle = clEnqueueReadBuffer(cls->cqueue, dog_d, CL_TRUE, 0, sizeof(float)*w*h*(s-1), dog, 0, NULL, NULL);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
+
+	clReleaseMemObject(blurred_d);
+	clReleaseMemObject(dog_d);
 }
 
 void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
@@ -184,6 +187,19 @@ void gaussian_blur_OMP(float *out, float *in, float *buf, int w, int h,
 	delete[] kernel;
 }
 
+void gaussian_blur_OCL(cl_mem out, cl_mem in, cl_mem buf, int w, int h,
+	float sigma, CLStruct *cls)
+{
+	float* kernel;
+	int kernelSize = generate_1D_gaussian_kernel(kernel, sigma);
+
+	// cal the kernel
+	conv1D_symm_and_transpose_OCL(buf,  in, w, h, kernelSize, kernel, cls);
+	conv1D_symm_and_transpose_OCL(out, buf, h, w, kernelSize, kernel, cls);
+
+	delete[] kernel;
+}
+
 void conv1D_symm_and_transpose(float *out, float *in, int w, int h,
 	int kernelSize, float *kernel)
 {
@@ -224,6 +240,34 @@ void conv1D_symm_and_transpose_OMP(float *out, float *in, int w, int h,
 			out[j*h+i] = sum;
 		}
 	}
+}
+
+void conv1D_symm_and_transpose_OCL(cl_mem out, cl_mem in, int w, int h,
+	int kernelSize, float *kernel, CLStruct *cls)
+{
+	cl_int cle;
+	cl_mem kern = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float)*(1+2*kernelSize), NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot allocate gaussian kernel on device\n");
+	cle = clEnqueueWriteBuffer(cls->cqueue, kern, CL_TRUE, 0, sizeof(float)*(1+2*kernelSize), kernel, 0, NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot copy gaussian kernel to device\n");
+
+	cle  = clSetKernelArg(cls->gaussian, 0, sizeof(cl_mem), &out);
+	cle |= clSetKernelArg(cls->gaussian, 1, sizeof(cl_mem), &in);
+	cle |= clSetKernelArg(cls->gaussian, 2, sizeof(cl_mem), &kern);
+	cle |= clSetKernelArg(cls->gaussian, 3, sizeof(int), &kernelSize);
+	cle |= clSetKernelArg(cls->gaussian, 4, sizeof(int), &w);
+	cle |= clSetKernelArg(cls->gaussian, 5, sizeof(int), &h);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot set \"gaussian\" kernel parameter\n");
+
+	size_t _g = (((w-1)>>7)+1)<<7, _l = 1<<7;
+
+	cle = clEnqueueNDRangeKernel(
+		cls->cqueue, cls->gaussian, 1, NULL,
+		&_g, &_l, 0, NULL, NULL
+	);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot launch \"gaussian\" kernel (%d)\n", cle);
+
+	clReleaseMemObject(kern);
 }
 
 void inv_3d_matrix(float* dst, float* src)

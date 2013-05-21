@@ -3,6 +3,8 @@
 
 #include <cstdlib>
 #include <CL/cl.h>
+#include <cstdarg>
+
 struct CLStruct {
 	cl_platform_id platform;
 	cl_device_id device;
@@ -12,10 +14,17 @@ struct CLStruct {
 	cl_kernel gaussian, diff;
 };
 
-#define ABORT_IF(COND, STR)\
-	if (COND) {\
-		printf(STR);\
-		abort();\
+static void ABORT_IF(bool cond, const char *fmt, ...)
+{
+	va_list v;
+	va_start(v, fmt);
+	
+	if (cond) {
+		vprintf(fmt, v);
+		abort();
 	}
+
+	va_end(v);
+}
 
 #endif /* end of include guard: __CLSTRUCT_H__ */
