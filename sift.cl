@@ -1,3 +1,5 @@
+#include "clshare.h"
+
 __kernel void conv_and_trans(
 	__global float *dst, __global float *src,
 	__global const float *kern, int kernSiz,
@@ -47,7 +49,7 @@ __kernel void conv_and_trans2(
 		return ;
 	}
 
-	float buffer[35];
+	float buffer[2*MAX_KERNSIZ+1];
 	__global float *src_tmp = src + X;
 	buffer[0] = *src_tmp;
 	for (int i = 0; i <= kernSiz; ++i) {

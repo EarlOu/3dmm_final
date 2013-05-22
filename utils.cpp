@@ -3,6 +3,7 @@
 #include <cmath>
 #include "utils.h"
 #include "clstruct.h"
+#include "clshare.h"
 
 void diff(float *dog, float *blurred, int s, int w, int h)
 {
@@ -192,6 +193,7 @@ void gaussian_blur_OCL(cl_mem out, cl_mem in, cl_mem buf, int w, int h,
 {
 	float* kernel;
 	int kernelSize = generate_1D_gaussian_kernel(kernel, sigma);
+	ABORT_IF(kernelSize>MAX_KERNSIZ, "Sorry, I only support gaussian blur with kernel size <= %d (%d get)\n", MAX_KERNSIZ, kernelSize);
 
 	// cal the kernel
 	conv1D_symm_and_transpose_OCL(buf,  in, w, h, kernelSize, kernel, cls);
