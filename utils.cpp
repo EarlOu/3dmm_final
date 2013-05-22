@@ -247,7 +247,7 @@ void conv1D_symm_and_transpose_OCL(cl_mem out, cl_mem in, int w, int h,
 {
 	cl_int cle;
 	cl_mem kern = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float)*(1+2*kernelSize), NULL, NULL);
-	ABORT_IF(cle != CL_SUCCESS, "Cannot allocate gaussian kernel on device\n");
+	ABORT_IF(!kern, "Cannot allocate gaussian kernel on device\n");
 	cle = clEnqueueWriteBuffer(cls->cqueue, kern, CL_TRUE, 0, sizeof(float)*(1+2*kernelSize), kernel, 0, NULL, NULL);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot copy gaussian kernel to device\n");
 

@@ -140,14 +140,14 @@ void Sift::init_gaussian_build()
 	float sigmak = powf(2.0f, 1.0f/lvPerScale);
 	float dsigma0 = sigma0 * sqrtf(1.0f - 1.0f/(sigmak*sigmak));
 	float dsigmar = sigmak;
-	double c1, c2;
-	c1 = omp_get_wtime();
 	cl_mem mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	cl_mem mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
 		for(int s = 0 ; s <= lvPerScale+1; ++s) {
+			double c1, c2;
+			c1 = omp_get_wtime();
 			switch (accel) {
 			case Accel_None:
 				gaussian_blur(
@@ -175,6 +175,8 @@ void Sift::init_gaussian_build()
 				ABORT_IF(cle != CL_SUCCESS, "Cannot read blurred result\n");
 				break;
 			}
+			c2 = omp_get_wtime();
+			printf("Calculate Gaussian blur (o=%d, s=%d): %lf (sec)\n", o, s, c2-c1);
 			sigma *= dsigmar;
 		}
 
@@ -188,8 +190,6 @@ void Sift::init_gaussian_build()
 
 	clReleaseMemObject(mem_img);
 	clReleaseMemObject(mem_buf);
-	c2 = omp_get_wtime();
-	printf("Calculate Gaussian blur %lf\n", c2-c1);
 
 	if (dumpImage) {
 		dump_gaussian_build();
@@ -518,22 +518,20 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 	c1 = omp_get_wtime();
 	switch (accel) {
 	case Accel_None:
+	case Accel_OCL:
 		for (int i = 0; i < n; ++i) {
 			calc_kp_angle(*kps);
 			++kps;
 		}
 		break;
 	case Accel_OMP:
-	case Accel_OCL:
 		if (!hasGrads) {
 			init_gradient();
 		}
-		omp_set_num_threads(1);
 #pragma omp parallel for schedule(dynamic, 32)
 		for (int i = 0; i < n; ++i) {
 			calc_kp_angle(kps[i]);
 		}
-		omp_set_num_threads(2);
 		break;
 	}
 	c2 = omp_get_wtime();
