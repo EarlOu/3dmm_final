@@ -22,25 +22,14 @@ __kernel void conv_and_trans(
 			// sum += row[x];
 		}
 		*col = sum;
-		// *col = sum / (1+2*kernSiz);
 		++col;
 		row += w;
 	}
-
-	/*
-	__global const float *row = src+X;
-	__global float *col = dst + X*h;
-	for	(int i = 0; i < h; ++i) {
-		*col = *row;
-		++col;
-		row += w;
-	}
-	*/
 }
 
 __kernel void conv_and_trans2(
 	__global float *dst, __global float *src,
-	__global const float *kern, int kernSiz,
+	__global const float *kern, const int kernSiz,
 	int w, int h
 )
 {
@@ -52,17 +41,17 @@ __kernel void conv_and_trans2(
 	float buffer[2*MAX_KERNSIZ+1];
 	__global float *src_tmp = src + X;
 	buffer[0] = *src_tmp;
-	for (int i = 0; i <= kernSiz; ++i) {
+	for (int i = 1; i <= kernSiz; ++i) {
 		buffer[i] = buffer[0];
 	}
 	for (int i = 1; i <= kernSiz; ++i) {
 		src_tmp += w;
-		buffer[kernSiz+i] = *src;
+		buffer[kernSiz+i] = *src_tmp;
 	}
 
 	int start = 0;
 	__global float *dst_tmp = dst + h*X;
-	for	(int i = 0; i < h; ++i) {
+	for (int i = 0; i < h; ++i) {
 		float sum = 0.0f;
 		for (int j = 0; j <= 2*kernSiz; ++j) {
 			int ind = j+start;
@@ -72,31 +61,24 @@ __kernel void conv_and_trans2(
 			sum += kern[j] * buffer[ind];
 		}
 		*dst_tmp = sum;
+		/*
+		int ind = kernSiz+start;
+		if (ind > 2*kernSiz) {
+			ind -= 2*kernSiz+1;
+		}
+		*dst_tmp = buffer[ind];
+		*/
+
 		++dst_tmp;
-		if (i < h-kernSiz) {
+		if (i < h-kernSiz-1) {
 			src_tmp += w;
 		}
+		buffer[start] = *src_tmp;
 
 		++start;
 		if (start > 2*kernSiz) {
 			start = 0;
 		}
-	}
-	__global const float *row = src;
-	__global float *col = dst + X*h;
-	for	(int i = 0; i < h; ++i) {
-		float sum = 0.0f;
-		for (int j = -kernSiz; j <= kernSiz; ++j) {
-			int x = X+j;
-			x = max(x, 0);
-			x = min(x, w-1);
-			sum += row[x] * kern[j+kernSiz];
-			// sum += row[x];
-		}
-		*col = sum;
-		// *col = sum / (1+2*kernSiz);
-		++col;
-		row += w;
 	}
 }
 
