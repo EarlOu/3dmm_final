@@ -143,8 +143,12 @@ void Sift::init_gaussian_build()
 	float sigmak = powf(2.0f, 1.0f/lvPerScale);
 	float dsigma0 = sigma0 * sqrtf(1.0f - 1.0f/(sigmak*sigmak));
 	float dsigmar = sigmak;
-	cl_mem mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
-	cl_mem mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
+	cl_mem mem_img;
+	cl_mem mem_buf;
+	if (accel == Accel_OCL) {
+		mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
+		mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
+	}
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
@@ -190,10 +194,10 @@ void Sift::init_gaussian_build()
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
-
-	clReleaseMemObject(mem_img);
-	clReleaseMemObject(mem_buf);
-
+	if (accel == Accel_OCL) {
+		clReleaseMemObject(mem_img);
+		clReleaseMemObject(mem_buf);
+	}
 	if (dumpImage) {
 		dump_gaussian_build();
 	}
