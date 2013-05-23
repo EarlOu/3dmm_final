@@ -5,7 +5,10 @@
 
 #include <ctime>
 #include <cstring>
-#include <cmath>
+#ifdef _MSC_VER
+#define _USE_MATH_DEFINES
+#endif
+#include <math.h>
 #include <cstdio>
 #include <cfloat>
 #include <omp.h>
