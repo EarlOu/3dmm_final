@@ -6,7 +6,7 @@
 int main(int argc, char** argv) {
 	unsigned char *p;
 	int w, h;
-	FILE *fp = fopen("test.pgm", "rb");
+	FILE *fp = fopen(argv[1], "rb");
 	load_P5_pgm(fp, &w, &h, &p);
 	float *img = new float[w*h];
 	float inv255 = 1.0f / 256.0f;
