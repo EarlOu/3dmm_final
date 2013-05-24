@@ -149,6 +149,7 @@ void Sift::init_gaussian_build()
 		mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 		mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	}
+	double total_time = 0.0f;
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
@@ -184,6 +185,7 @@ void Sift::init_gaussian_build()
 			}
 			c2 = omp_get_wtime();
 			printf("Calculate Gaussian blur (o=%d, s=%d): %lf (sec)\n", o, s, c2-c1);
+			total_time += c2 - c1;
 			sigma *= dsigmar;
 		}
 
@@ -194,6 +196,9 @@ void Sift::init_gaussian_build()
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
+
+	printf("Total time for Gaussian blur: %lf (sec)\n\n", total_time);
+
 	if (accel == Accel_OCL) {
 		clReleaseMemObject(mem_img);
 		clReleaseMemObject(mem_buf);
@@ -207,9 +212,11 @@ void Sift::init_gaussian_dog()
 {
 	int wtmp = wmax;
 	int htmp = hmax;
-	double c1, c2;
-	c1 = omp_get_wtime();
+
+	double total_time = 0.0f;
 	for (int o = 0; o < numOct; ++o) {
+		double c1, c2;
+		c1 = omp_get_wtime();
 		switch (accel) {
 		case Accel_None:
 			diff(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
@@ -223,9 +230,11 @@ void Sift::init_gaussian_dog()
 		}
 		wtmp >>= 1;
 		htmp >>= 1;
+		c2 = omp_get_wtime();
+		printf("Calculate diff kernel (o=%d): %lf (sec)\n", o, c2-c1);
+		total_time += c2 - c1;
 	}
-	c2 = omp_get_wtime();
-	printf("Calculate diff kernel %lf\n", c2-c1);
+	printf("Total time for diff kernel %lf (sec)\n\n", total_time);
 
 	if (dumpImage) {
 		dump_gaussian_dog();
