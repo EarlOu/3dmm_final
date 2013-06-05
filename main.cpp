@@ -51,6 +51,5 @@ int main(int argc, char** argv) {
 	fclose(fp);
 	free(p);
 
-	getchar();
 	return 0;
 }

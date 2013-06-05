@@ -490,7 +490,6 @@ void Sift::calc_kp_angle(Keypoint &kp)
 	int intY = (int)(floatY + 0.5);
 
 	if (intX < 1 || intX >= w || intY < 1 || intY >= h) {
-		printf("??\n");
 		return;
 	}
 
