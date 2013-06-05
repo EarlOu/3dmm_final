@@ -89,6 +89,9 @@ Sift::Sift(
 		cls->calc_angle = clCreateKernel(cls->program, "calc_angle", &cle);
 		ABORT_IF(cle != CL_SUCCESS || !cls->calc_angle, "Cannot find \"calc_angle\" OCL kernel\n");
 
+		cls->build_gradient_map = clCreateKernel(cls->program, "build_gradient_map", &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->build_gradient_map, "Cannot find \"build_gradient_map\" OCL kernel\n");
+
 		delete[] shader;
 	}
 	init_gaussian();
@@ -452,12 +455,37 @@ void Sift::init_gradient_build()
 {
 	int wtmp = wmax;
 	int htmp = hmax;
-	for (int o = 0; o < numOct; ++o) {
-		int imgsiz = wtmp*htmp;
-		build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
-		wtmp >>= 1;
-		htmp >>= 1;
+	double c1, c2;
+	c1 = omp_get_wtime();
+	switch (accel) {
+	case Accel_None:
+		for (int o = 0; o < numOct; ++o) {
+			int imgsiz = wtmp*htmp;
+			build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
+			wtmp >>= 1;
+			htmp >>= 1;
+		}
+		break;
+	case Accel_OMP:
+#pragma omp parallel for schedule(dynamic, 32)
+		for (int o = 0; o < numOct; ++o) {
+			int imgsiz = wtmp*htmp;
+			build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
+			wtmp >>= 1;
+			htmp >>= 1;
+		}
+		break;
+	case Accel_OCL:
+		for (int o = 0; o < numOct; ++o) {
+			int imgsiz = wtmp*htmp;
+			build_gradient_map_OCL(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp, cls);
+			wtmp >>= 1;
+			htmp >>= 1;
+		}
+		break;
 	}
+	c2 = omp_get_wtime();
+	printf("Calculate gradient %lf\n", c2-c1);
 }
 
 void Sift::init_gradient()

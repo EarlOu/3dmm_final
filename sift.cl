@@ -281,6 +281,10 @@ __kernel void calc_kp_descriptors(
 		}
 	}
 	regularize_feature(dess + 128 * X);
+#undef atd
+#undef MAX
+#undef MIN
+#undef ABS
 }
 
 __kernel void calc_angle(
@@ -372,4 +376,33 @@ __kernel void calc_angle(
 	float dxx = (right + left - (2 * self));
 	kp[index].orient = (maxBinIndex + 0.5 - (dx / dxx)) * (2 * M_PI / histSize);
 #undef histSize
+}
+
+__kernel void build_gradient_map(
+		__global float* map, __global float* blurred, int _s, int w, int h)
+{
+	int idx = get_global_id(0);
+	if (idx < 1 || idx > w-2) return;
+
+	map += 2 * idx;
+	blurred += idx;
+
+	for (int s = 0; s < _s; ++s) {
+		map += w*2;
+		blurred += w;
+		for (int i = 1; i < (h - 1); ++i) {
+			float dx = 0.5 * (blurred[1] - blurred[-1]);
+			float dy = 0.5 * (blurred[w] - blurred[-w]);
+			float theta = atan2(dy, dx);
+			if (theta < 0) {
+				theta += 2 * M_PI;
+			}
+			map[0] = sqrt(dx * dx + dy * dy);
+			map[1] = theta;
+			map += 2 * w;
+			blurred += w;
+		}
+		map += 2 * w;
+		blurred += w;
+	}
 }
