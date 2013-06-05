@@ -85,6 +85,9 @@ Sift::Sift(
 
 		cls->calc_kp_descriptors = clCreateKernel(cls->program, "calc_kp_descriptors", &cle);
 		ABORT_IF(cle != CL_SUCCESS || !cls->calc_kp_descriptors, "Connot find \"calc_kp_descriptors\" kernel\n");
+		
+		cls->calc_angle = clCreateKernel(cls->program, "calc_angle", &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->calc_angle, "Cannot find \"calc_angle\" OCL kernel\n");
 
 		delete[] shader;
 	}
@@ -187,7 +190,7 @@ void Sift::init_gaussian_build()
 				break;
 			}
 			c2 = omp_get_wtime();
-			printf("Calculate Gaussian blur (o=%d, s=%d): %lf (sec)\n", o, s, c2-c1);
+			//printf("Calculate Gaussian blur (o=%d, s=%d): %lf (sec)\n", o, s, c2-c1);
 			total_time += c2 - c1;
 			sigma *= dsigmar;
 		}
@@ -200,7 +203,7 @@ void Sift::init_gaussian_build()
 		htmp >>= 1;
 	}
 
-	printf("Total time for Gaussian blur: %lf (sec)\n\n", total_time);
+	printf("Total time for Gaussian blur: %lf (sec)\n", total_time);
 
 	if (accel == Accel_OCL) {
 		clReleaseMemObject(mem_img);
@@ -234,10 +237,10 @@ void Sift::init_gaussian_dog()
 		wtmp >>= 1;
 		htmp >>= 1;
 		c2 = omp_get_wtime();
-		printf("Calculate diff kernel (o=%d): %lf (sec)\n", o, c2-c1);
+		//printf("Calculate diff kernel (o=%d): %lf (sec)\n", o, c2-c1);
 		total_time += c2 - c1;
 	}
-	printf("Total time for diff kernel %lf (sec)\n\n", total_time);
+	printf("Total time for diff kernel %lf (sec)\n", total_time);
 
 	if (dumpImage) {
 		dump_gaussian_dog();
@@ -551,7 +554,6 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 	c1 = omp_get_wtime();
 	switch (accel) {
 	case Accel_None:
-	case Accel_OCL:
 		for (int i = 0; i < n; ++i) {
 			calc_kp_angle(*kps);
 			++kps;
@@ -566,6 +568,43 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 			calc_kp_angle(kps[i]);
 		}
 		break;
+	case Accel_OCL:
+		if (!hasGrads) {
+			init_gradient();
+		}
+        
+		cl_int cle;
+		
+		cl_mem kps_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(Keypoint) * n, NULL, NULL);
+		cl_mem magAndThetas_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float) * gradient_map_size, NULL, NULL);
+
+		ABORT_IF(!magAndThetas_d || !kps_d, "Cannot allocate device memory\n");
+		
+		cle  = clEnqueueWriteBuffer(cls->cqueue, magAndThetas_d, CL_TRUE, 0, sizeof(float) * gradient_map_size, magAndThetas, 0, NULL, NULL);
+		cle |= clEnqueueWriteBuffer(cls->cqueue, kps_d, CL_TRUE, 0, sizeof(Keypoint) * n, kps, 0, NULL, NULL);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot copy memory to device\n");
+		
+		cle  = clSetKernelArg(cls->calc_angle, 0, sizeof(cl_mem), &kps_d);
+		cle |= clSetKernelArg(cls->calc_angle, 1, sizeof(cl_mem), &magAndThetas_d);
+		cle |= clSetKernelArg(cls->calc_angle, 2, sizeof(cl_mem), &wmax);
+		cle |= clSetKernelArg(cls->calc_angle, 3, sizeof(cl_mem), &hmax);
+		cle |= clSetKernelArg(cls->calc_angle, 4, sizeof(cl_mem), &lvPerScale);
+		cle |= clSetKernelArg(cls->calc_angle, 5, sizeof(cl_mem), &n);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot set \"calc_angle\" kernel parameter\n");
+		
+		size_t global_work_size = (((n-1)>>7)+1)<<7, local_work_size = 1<<7;
+		cle = clEnqueueNDRangeKernel(cls->cqueue, cls->calc_angle, 1, NULL,&global_work_size, &local_work_size, 0, NULL, NULL);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot launch \"calc_angle\" kernel\n");
+		
+		clFinish(cls->cqueue);
+		
+		// Read back the results from the device to verify the output
+		cle = clEnqueueReadBuffer(cls->cqueue, kps_d, CL_TRUE, 0, sizeof(Keypoint)*n, &kps[0], 0, NULL, NULL);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
+		
+		clReleaseMemObject(kps_d);
+		clReleaseMemObject(magAndThetas_d);
+	break;
 	}
 	c2 = omp_get_wtime();
 	printf("Calculate angles %lf\n", c2-c1);
