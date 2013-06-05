@@ -213,9 +213,9 @@ __kernel void calc_kp_descriptors(
 	__global float*       dpt = dess + (128 * X) + (NBP/2) * binyo + (NBP/2) * binxo ;
 
 #define atd(dbinx,dbiny,dbint) *(dpt + (dbint)*binto + (dbiny)*binyo + (dbinx)*binxo)
-#define MAX(a, b) ((a>b)?a:b)
-#define MIN(a, b) ((a<b)?a:b)
-#define ABS(a) ((a>0)?a:-a)
+#define MAX(a, b) (((a)>(b))?(a):(b))
+#define MIN(a, b) (((a)<(b))?(a):(b))
+#define ABS(a) (((a)>0)?(a):-(a))
 
 	for (int i = MAX(-W, 1-intY); i < MIN(W+1, h-1-intY); ++i) {
 		for (int j = MAX(-W, 1-intX); j < MIN(W+1, w-1-intX); ++j) {
