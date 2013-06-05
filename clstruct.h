@@ -11,7 +11,7 @@ struct CLStruct {
 	cl_context context;
 	cl_command_queue cqueue;
 	cl_program program;
-	cl_kernel gaussian, diff;
+	cl_kernel gaussian, diff, calc_kp_descriptors;
 };
 
 static void ABORT_IF(bool cond, const char *fmt, ...)

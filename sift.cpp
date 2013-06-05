@@ -83,6 +83,9 @@ Sift::Sift(
 		cls->diff = clCreateKernel(cls->program, "diff", &cle);
 		ABORT_IF(cle != CL_SUCCESS || !cls->diff, "Cannot find \"diff\" OCL kernel\n");
 
+		cls->calc_kp_descriptors = clCreateKernel(cls->program, "calc_kp_descriptors", &cle);
+		ABORT_IF(cle != CL_SUCCESS || !cls->calc_kp_descriptors, "Connot find \"calc_kp_descriptors\" kernel\n");
+
 		delete[] shader;
 	}
 	init_gaussian();
@@ -420,12 +423,26 @@ void Sift::init_gradient_mem()
 {
 	int wtmp = wmax;
 	int htmp = hmax;
-	magAndThetas = new float*[numOct];
+	int bufferSize = 0;
 	for (int i = 0; i < numOct; ++i) {
-		magAndThetas[i] = new float[2*wtmp*htmp*lvPerScale];
+		bufferSize += 2*wtmp*htmp*lvPerScale;
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
+	magAndThetas = new float[bufferSize];
+	gradient_map_size = bufferSize;
+}
+
+float * Sift::get_gradient(int o) {
+	int wtmp = wmax;
+	int htmp = hmax;
+	float* ptr = magAndThetas;
+	for (int i=0; i<o; ++i) {
+		ptr += 2 * wtmp * htmp * lvPerScale;
+		wtmp >>= 1;
+		htmp >>= 1;
+	}
+	return ptr;
 }
 
 void Sift::init_gradient_build()
@@ -434,7 +451,7 @@ void Sift::init_gradient_build()
 	int htmp = hmax;
 	for (int o = 0; o < numOct; ++o) {
 		int imgsiz = wtmp*htmp;
-		build_gradient_map(magAndThetas[o], blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
+		build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 		wtmp >>= 1;
 		htmp >>= 1;
 	}
@@ -463,7 +480,7 @@ void Sift::calc_kp_angle(Keypoint &kp)
 	}
 	int w = wmax>>o;
 	int h = hmax>>o;
-	const float* gradImage = magAndThetas[o] + 2*s*w*h;
+	const float* gradImage = get_gradient(o) + 2*s*w*h;
 	float floatX = kp.x / period;
 	float floatY = kp.y / period;
 	int intX = (int)(floatX + 0.5);
@@ -587,7 +604,7 @@ void Sift::calc_kp_descriptor(const Keypoint &kp, Descriptor &des)
 	float period = powf(2.0f, o);
 	int w = wmax >> o;
 	int h = hmax >> o;
-	float* gradImage = magAndThetas[o] + s*w*h*2;
+	float* gradImage = get_gradient(o) + s*w*h*2;
 	float sigma = kp.sigma / period;
 	float floatX = kp.x / period;
 	float floatY = kp.y / period;
@@ -705,13 +722,55 @@ void Sift::calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess)
 		}
 		break;
 	case Accel_OMP:
-	case Accel_OCL:
 #pragma omp parallel for schedule(dynamic, 64)
 		for (int i = 0; i < n; ++i) {
 			calc_kp_descriptor(kps[i], dess[i]);
 		}
+		break;
+	case Accel_OCL:
+		calc_kp_descriptors_OCL(kps, n, dess);
+		break;
 	}
 	c2 = omp_get_wtime();
 	printf("Calculate descriptors %lf\n", c2-c1);
 }
 
+void Sift::calc_kp_descriptors_OCL(const struct Keypoint* kps, int n, struct Descriptor* dess)
+{
+	cl_int cle;
+	cl_mem dess_d = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float) * 128 * n, NULL, NULL);
+	cl_mem kps_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(Keypoint) * n, NULL, NULL);
+	cl_mem magAndThetas_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float) * gradient_map_size, NULL, NULL);
+
+	ABORT_IF(!magAndThetas_d || !dess_d || !kps_d, "Cannot allocate device memory\n");
+
+	cle  = clEnqueueWriteBuffer(cls->cqueue, magAndThetas_d, CL_TRUE, 0, sizeof(float) * gradient_map_size, magAndThetas, 0, NULL, NULL);
+	cle |= clEnqueueWriteBuffer(cls->cqueue, kps_d, CL_TRUE, 0, sizeof(Keypoint) * n, kps, 0, NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot copy memory to device\n");
+
+	cle  = clSetKernelArg(cls->calc_kp_descriptors, 0, sizeof(cl_mem), &dess_d);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 1, sizeof(cl_mem), &kps_d);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 2, sizeof(cl_mem), &magAndThetas_d);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 3, sizeof(int), &wmax);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 4, sizeof(int), &hmax);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 5, sizeof(int), &lvPerScale);
+	cle |= clSetKernelArg(cls->calc_kp_descriptors, 6, sizeof(int), &n);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot set \"calc_kp_descriptor\" kernel parameter\n");
+
+	size_t _g = (((n-1)>>7)+1)<<7, _l = 1<<7;
+	cle = clEnqueueNDRangeKernel(
+		cls->cqueue, cls->calc_kp_descriptors, 1, NULL,
+		&_g, &_l, 0, NULL, NULL
+	);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot launch \"calc_kp_descriptors\" kernel\n");
+
+	cle = clFinish(cls->cqueue);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot exec \"calc_kp_descriptors\" kernel\n");
+
+	// Read back the results from the device to verify the output
+    cle = clEnqueueReadBuffer(cls->cqueue, dess_d, CL_TRUE, 0, sizeof(float) * 128 * n, dess, 0, NULL, NULL);
+	ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
+	clReleaseMemObject(kps_d);
+	clReleaseMemObject(dess_d);
+	clReleaseMemObject(magAndThetas_d);
+}

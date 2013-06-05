@@ -40,11 +40,12 @@ private:
 	bool hasGaussian, hasGrads;
 	AccerModel accel;
 	float *img, *buffer;
-	float **blurred, **dogs, **magAndThetas;
+	float **blurred, **dogs, *magAndThetas;
 	int imgw, imgh, wmax, hmax;
 	int octMin, numOct, lvPerScale;
 	float sigma0;
 	float eth, mth;
+	int gradient_map_size;
 
 	void init_gaussian_mem();
 	void init_gaussian_first();
@@ -61,6 +62,10 @@ private:
 	void init_gradient_mem();
 	void init_gradient_build();
 	void init_gradient();
+	float *get_gradient(int o);
+
+	void calc_kp_descriptors_OCL(const struct Keypoint* kps,
+		int n, struct Descriptor* dess);
 
 	vector<Keypoint> kps;
 	CLStruct *cls;
