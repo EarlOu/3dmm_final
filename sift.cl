@@ -282,3 +282,95 @@ __kernel void calc_kp_descriptors(
 	}
 	regularize_feature(dess + 128 * X);
 }
+
+__kernel void calc_angle(
+				__global struct Keypoint *kp,
+				__global void *magAndThetas,
+				int wmax, int hmax, int lvPerScale, int n)
+{
+	
+	int index = get_global_id(0);
+	if (index >= n) return;
+	int o = kp[index].o;
+	int s = kp[index].is;
+	float period = 1;
+	for (int i=0;i<o;i++)
+	{
+		period *=2.0;
+	}
+	float sigmaW = 1.5f * (kp[index].sigma / period);
+	int windowSize = 3 * sigmaW;
+	if (windowSize <= 0) {
+		windowSize = 1;
+	}
+	int w = wmax>>o;
+	int h = hmax>>o;
+	
+	__global float* gradImage = get_gradient(o, magAndThetas, wmax, hmax, lvPerScale) + s*w*h*2;
+    
+	float floatX = kp[index].x / period;
+	float floatY = kp[index].y / period;
+	int intX = (int)(floatX + 0.5);
+	int intY = (int)(floatY + 0.5);
+    
+	if (intX < 1 || intX >= w || intY < 1 || intY >= h) {
+		return;
+	}
+    
+	// compute histogram
+	const int histSize = 36;
+	float hist[36];
+	for (int i=0;i<histSize;i++)
+	{
+		hist[i]=0;
+	}
+	for (int j=max(1-intY, -windowSize); j < min(h-1-intY, windowSize+1); ++j) {
+		for (int i=max(1-intX, -windowSize); i < min(w-1-intX, windowSize+1); ++i) {
+			float dx = i + intX - floatX;
+			float dy = j + intY - floatY;
+			float r2 = dx*dx + dy*dy;
+			if (r2 >= (windowSize * windowSize) + 0.5) { // only compute within circle
+				continue;
+			}
+			float weight = exp(-r2 / (2*sigmaW*sigmaW));
+			float magnitude = gradImage[((intX + i) + (intY + j) * w) * 2];
+			float angle = gradImage[((intX + i) + (intY + j) * w) * 2 + 1];
+			int binIndex = (int)(angle / (2 * M_PI) * histSize) % histSize;
+			hist[binIndex] += magnitude * weight;
+		}
+	}
+    
+	// box filter smoothing
+	for (int i = 0; i < 5; ++i) {
+		float prevCache;
+		float currCache = hist[histSize - 1];
+		float first = hist[0];
+		int j;
+		for (j = 0; j < (histSize - 1); ++j) {
+			prevCache = currCache;
+			currCache = hist[j];
+			hist[j] = (prevCache + hist[j] + hist[j+1]) / 3.0f;
+		}
+		hist[j] = (currCache + hist[j] + first) / 3.0f;
+	}
+    
+	// find histogram maximum
+	int maxBinIndex;
+	float maxBallot = -FLT_MAX;
+	for (int i = 0; i < histSize; ++i) {
+		if (hist[i] > maxBallot) {
+			maxBallot = hist[i];
+			maxBinIndex = i;
+		}
+	}
+    
+	// quadratic interpolation
+	float self = hist[maxBinIndex];
+	float left = (maxBinIndex == 0)? hist[histSize-1] : hist[maxBinIndex-1];
+	float right = (maxBinIndex == histSize-1)? hist[0] : hist[maxBinIndex+1];
+	float dx = 0.5 * (right - left);
+	float dxx = (right + left - (2 * self));
+	kp[index].orient = (maxBinIndex + 0.5 - (dx / dxx)) * (2 * M_PI / histSize);
+#undef histSize
+}
+
