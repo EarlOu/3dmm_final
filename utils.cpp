@@ -1,6 +1,9 @@
 #include <cstdio>
 #include <cstdlib>
-#include <cmath>
+#ifdef _MSC_VER
+#define _USE_MATH_DEFINES
+#endif
+#include <math.h>
 #include "utils.h"
 #include "clstruct.h"
 #include "clshare.h"
@@ -143,7 +146,7 @@ static int generate_1D_gaussian_kernel(float* &kernel, float sigma)
 	// create right side
 	for (int i = 0; i < (kernelSize + 1); ++i) {
 		kernel[i + kernelSize] = 1 / (sigma * sqrtf(2 * M_PI)) *
-			exp(-1 * pow(i, 2) / (2 * pow(sigma, 2)));
+			exp(-1 * pow(i, 2.0f) / (2 * pow(sigma, 2)));
 	}
 	// reverse right side as left side
 	for (int i = 0; i < kernelSize; ++i) {
