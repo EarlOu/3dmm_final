@@ -467,10 +467,9 @@ void Sift::init_gradient_build()
 		}
 		break;
 	case Accel_OMP:
-#pragma omp parallel for schedule(dynamic, 32)
 		for (int o = 0; o < numOct; ++o) {
 			int imgsiz = wtmp*htmp;
-			build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
+			build_gradient_map_OMP(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 			wtmp >>= 1;
 			htmp >>= 1;
 		}

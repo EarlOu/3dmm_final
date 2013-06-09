@@ -94,6 +94,32 @@ void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 	}
 }
 
+void build_gradient_map_OMP(float*map, float *blurred, int _s, int w, int h) {
+	int size = w * h;
+	for (int s = 0; s < _s; ++s) {
+#pragma omp parallel for
+		for (int i = 1; i < (h - 1); ++i) {
+			float* m = map + ((i * w) << 1);
+			float* b = blurred + i * w;
+			for (int j = 1; j < (w - 1); ++j) {
+				m += 2;
+				b += 1;
+				float dx = 0.5 * (b[1] - b[-1]);
+				float dy = 0.5 * (b[w] - b[-w]);
+				float theta = atan2f(dy, dx);
+				if (theta < 0) {
+					theta += 2 * M_PI;
+				}
+
+				*m = sqrtf(dx * dx + dy * dy);
+				*(m + 1) = theta;
+			}
+		}
+		map += size << 1;
+		blurred += size;
+	}
+}
+
 void build_gradient_map_OCL(float *map, float *blurred, int _s, int w, int h, CLStruct *cls) {
 	cl_int cle;
 	cl_mem map_d = clCreateBuffer(cls->context, CL_MEM_WRITE_ONLY, sizeof(float) * 2 * w * h * _s, NULL, NULL);
