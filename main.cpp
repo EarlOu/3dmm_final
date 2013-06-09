@@ -6,7 +6,19 @@
 int main(int argc, char** argv) {
 	unsigned char *p;
 	int w, h;
+
+	if (argc != 2) {
+		printf("Usage: %s <file>\n", argv[0]);
+		return 1;
+	}
+
 	FILE *fp = fopen(argv[1], "rb");
+
+	if(!fp) {
+		printf("Cannot open %s\n", argv[1]);
+		return 1;
+	}
+
 	load_P5_pgm(fp, &w, &h, &p);
 	float *img1 = new float[w*h];
 	float *img2 = new float[w*h];

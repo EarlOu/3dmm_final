@@ -612,11 +612,11 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 		
 		cle  = clSetKernelArg(cls->calc_angle, 0, sizeof(cl_mem), &kps_d);
 		cle |= clSetKernelArg(cls->calc_angle, 1, sizeof(cl_mem), &magAndThetas_d);
-		cle |= clSetKernelArg(cls->calc_angle, 2, sizeof(cl_mem), &wmax);
-		cle |= clSetKernelArg(cls->calc_angle, 3, sizeof(cl_mem), &hmax);
-		cle |= clSetKernelArg(cls->calc_angle, 4, sizeof(cl_mem), &lvPerScale);
-		cle |= clSetKernelArg(cls->calc_angle, 5, sizeof(cl_mem), &n);
-		ABORT_IF(cle != CL_SUCCESS, "Cannot set \"calc_angle\" kernel parameter\n");
+		cle |= clSetKernelArg(cls->calc_angle, 2, sizeof(int), &wmax);
+		cle |= clSetKernelArg(cls->calc_angle, 3, sizeof(int), &hmax);
+		cle |= clSetKernelArg(cls->calc_angle, 4, sizeof(int), &lvPerScale);
+		cle |= clSetKernelArg(cls->calc_angle, 5, sizeof(int), &n);
+		ABORT_IF(cle != CL_SUCCESS, "Cannot set \"calc_angle\" kernel parameter (%d)\n", cle);
 		
 		size_t global_work_size = (((n-1)>>7)+1)<<7, local_work_size = 1<<7;
 		cle = clEnqueueNDRangeKernel(cls->cqueue, cls->calc_angle, 1, NULL,&global_work_size, &local_work_size, 0, NULL, NULL);

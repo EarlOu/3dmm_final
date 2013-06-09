@@ -271,7 +271,7 @@ __kernel void calc_kp_descriptors(
 
 __kernel void calc_angle(
 				__global struct Keypoint *kp,
-				__global void *magAndThetas,
+				__global float *magAndThetas,
 				int wmax, int hmax, int lvPerScale, int n)
 {
 	

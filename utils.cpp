@@ -94,15 +94,14 @@ void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 	}
 }
 
-void build_gradient_map_OMP(float*map, float *blurred, int _s, int w, int h) {
+void build_gradient_map_OMP(float *map, float *blurred, int _s, int w, int h) {
 	int size = w * h;
 	float *mm;
 	float *bb;
-#pragma omp parallel private(mm, bb)
+#pragma omp parallel for private(mm, bb)
 	for (int s = 0; s < _s; ++s) {
 		mm = map + ((s * size) << 1);
 		bb = blurred + s * size;
-#pragma omp for
 		for (int i = 1; i < (h - 1); ++i) {
 			float* m = mm + ((i * w) << 1);
 			float* b = bb + i * w;
