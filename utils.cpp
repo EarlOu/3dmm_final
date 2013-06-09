@@ -20,11 +20,10 @@ void diff(float *dog, float *blurred, int s, int w, int h)
 void diff_OMP(float *dog, float *blurred, int s, int w, int h)
 {
 	float *d, *b;
-#pragma omp parallel private(b, d)
 	for (int i = 0; i < (s-1); ++i) {
 		d = dog + i*w*h;
 		b = blurred + i*w*h;
-#pragma omp for
+#pragma omp parallel for
 		for (int j = 0; j < w*h; ++j) {
 			d[j] = b[j+w*h] - b[j];
 		}
