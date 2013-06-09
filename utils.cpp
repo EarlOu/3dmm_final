@@ -20,10 +20,11 @@ void diff(float *dog, float *blurred, int s, int w, int h)
 void diff_OMP(float *dog, float *blurred, int s, int w, int h)
 {
 	float *d, *b;
+#pragma omp parallel private(d, b)
 	for (int i = 0; i < (s-1); ++i) {
 		d = dog + i*w*h;
 		b = blurred + i*w*h;
-#pragma omp parallel for
+#pragma omp for
 		for (int j = 0; j < w*h; ++j) {
 			d[j] = b[j+w*h] - b[j];
 		}
@@ -95,11 +96,16 @@ void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 
 void build_gradient_map_OMP(float*map, float *blurred, int _s, int w, int h) {
 	int size = w * h;
+	float *mm;
+	float *bb;
+#pragma omp parallel private(mm, bb)
 	for (int s = 0; s < _s; ++s) {
-#pragma omp parallel for
+		mm = map + ((s * size) << 1);
+		bb = blurred + s * size;
+#pragma omp for
 		for (int i = 1; i < (h - 1); ++i) {
-			float* m = map + ((i * w) << 1);
-			float* b = blurred + i * w;
+			float* m = mm + ((i * w) << 1);
+			float* b = bb + i * w;
 			for (int j = 1; j < (w - 1); ++j) {
 				m += 2;
 				b += 1;
@@ -114,8 +120,6 @@ void build_gradient_map_OMP(float*map, float *blurred, int _s, int w, int h) {
 				*(m + 1) = theta;
 			}
 		}
-		map += size << 1;
-		blurred += size;
 	}
 }
 
