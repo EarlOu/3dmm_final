@@ -77,7 +77,7 @@ Sift::Sift(
 			abort();
 		}
 
-		cls->gaussian = clCreateKernel(cls->program, "conv_and_trans", &cle);
+		cls->gaussian = clCreateKernel(cls->program, "conv_and_trans2", &cle);
 		ABORT_IF(cle != CL_SUCCESS || !cls->gaussian, "Cannot find \"conv\" OCL kernel\n");
 
 		cls->diff = clCreateKernel(cls->program, "diff", &cle);
