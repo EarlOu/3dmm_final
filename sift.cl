@@ -361,7 +361,7 @@ __kernel void calc_angle(
 }
 
 __kernel void build_gradient_map(
-		__global float* map, __global float* blurred, int _s, int w, int h)
+		__global float2* map, __global float *blurred, int _s, int w, int h)
 {
 	int idx = get_global_id(0);
 	if (idx < 1 || idx > w-2) return;
@@ -370,21 +370,21 @@ __kernel void build_gradient_map(
 	blurred += idx;
 
 	for (int s = 0; s < _s; ++s) {
-		map += w*2;
+		map += w;
 		blurred += w;
 		for (int i = 1; i < (h - 1); ++i) {
-			float dx = 0.5 * (blurred[1] - blurred[-1]);
-			float dy = 0.5 * (blurred[w] - blurred[-w]);
+			float dx = blurred[1] - blurred[-1];
+			float dy = blurred[w] - blurred[-w];
 			float theta = atan2(dy, dx);
 			if (theta < 0) {
 				theta += 2 * M_PI;
 			}
-			map[0] = sqrt(dx * dx + dy * dy);
-			map[1] = theta;
-			map += 2 * w;
+			float2 gradValue = {sqrt(dx*dx+dy*dy)*0.5f, theta};
+			*map = gradValue;
+			map += w;
 			blurred += w;
 		}
-		map += 2 * w;
+		map += w;
 		blurred += w;
 	}
 }

@@ -47,7 +47,7 @@ void diff_OCL(float *dog, const float *blurred, int s, int w, int h, CLStruct *c
 	cle |= clSetKernelArg(cls->diff, 4, sizeof(int), &h);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot set \"diff\" kernel parameter\n");
 
-	size_t _g = (((w-1)>>7)+1)<<7, _l = 1<<7;
+	size_t _g = (((w-1)>>8)+1)<<8, _l = 1<<8;
 	cle = clEnqueueNDRangeKernel(
 		cls->cqueue, cls->diff, 1, NULL,
 		&_g, &_l, 0, NULL, NULL
@@ -73,15 +73,15 @@ void build_gradient_map(float *map, float *blurred, int _s, int w, int h)
 			map += 2;
 			++blurred;
 			for (int j = 1; j < (w - 1); ++j) {
-				float dx = 0.5 * (blurred[1] - blurred[-1]);
-				float dy = 0.5 * (blurred[w] - blurred[-w]);
+				float dx = blurred[1] - blurred[-1];
+				float dy = blurred[w] - blurred[-w];
 				++blurred;
 				float theta = atan2f(dy, dx);
 				if (theta < 0) {
 					theta += 2 * M_PI;
 				}
 
-				*map = sqrtf(dx * dx + dy * dy);
+				*map = 0.5f * sqrtf(dx * dx + dy * dy);
 				++map;
 				*map = theta;
 				++map;
@@ -108,25 +108,22 @@ void build_gradient_map_OMP(float *map, float *blurred, int _s, int w, int h) {
 			for (int j = 1; j < (w - 1); ++j) {
 				m += 2;
 				b += 1;
-				float dx = 0.5 * (b[1] - b[-1]);
-				float dy = 0.5 * (b[w] - b[-w]);
+				float dx = b[1] - b[-1];
+				float dy = b[w] - b[-w];
 				float theta = atan2f(dy, dx);
 				if (theta < 0) {
 					theta += 2 * M_PI;
 				}
 
-				*m = sqrtf(dx * dx + dy * dy);
+				*m = 0.5f * sqrtf(dx * dx + dy * dy);
 				*(m + 1) = theta;
 			}
 		}
 	}
 }
 
-void build_gradient_map_OCL(float *map, float *blurred, int _s, int w, int h, CLStruct *cls) {
+void build_gradient_map_OCL(float *map, float *blurred, cl_mem map_d, cl_mem blurred_d, int _s, int w, int h, CLStruct *cls) {
 	cl_int cle;
-	cl_mem map_d = clCreateBuffer(cls->context, CL_MEM_WRITE_ONLY, sizeof(float) * 2 * w * h * _s, NULL, NULL);
-	cl_mem blurred_d = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, sizeof(float) * 2 * w * h * _s, NULL, NULL);
-	ABORT_IF(!map_d || !blurred_d, "Cannot allocate device memory\n");
 
 	cle = clEnqueueWriteBuffer(cls->cqueue, blurred_d, CL_TRUE, 0, sizeof(float)*(w * h * _s), blurred, 0, NULL, NULL);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot copy memory to device\n");
@@ -138,7 +135,7 @@ void build_gradient_map_OCL(float *map, float *blurred, int _s, int w, int h, CL
 	cle |= clSetKernelArg(cls->build_gradient_map, 4, sizeof(int), &h);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot set \"build_gradient_map\" kernel parameter\n");
 
-	size_t _g = (((w-1)>>7)+1)<<7, _l = 1<<7;
+	size_t _g = (((w-1)>>8)+1)<<8, _l = 1<<8;
 
 	cle = clEnqueueNDRangeKernel(
 		cls->cqueue, cls->build_gradient_map, 1, NULL,
@@ -152,9 +149,6 @@ void build_gradient_map_OCL(float *map, float *blurred, int _s, int w, int h, CL
 	// Read back the results from the device to verify the output
 	cle = clEnqueueReadBuffer(cls->cqueue, map_d, CL_TRUE, 0, sizeof(float) * 2 * w * h * _s, map, 0, NULL, NULL);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
-
-	clReleaseMemObject(map_d);
-	clReleaseMemObject(blurred_d);
 }
 
 static void upSampleRowAndTranspose(float *dst, float *src, int w, int h)

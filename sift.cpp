@@ -456,6 +456,13 @@ void Sift::init_gradient_build()
 	int wtmp = wmax;
 	int htmp = hmax;
 	double c1, c2;
+	cl_mem mem_grad;
+	cl_mem mem_blur;
+	if (accel == Accel_OCL) {
+		mem_grad = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, 2*lvPerScale*sizeof(float)*wmax*hmax, NULL, NULL);
+		mem_blur = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, lvPerScale*sizeof(float)*wmax*hmax, NULL, NULL);
+	}
+
 	c1 = omp_get_wtime();
 	switch (accel) {
 	case Accel_None:
@@ -477,7 +484,7 @@ void Sift::init_gradient_build()
 	case Accel_OCL:
 		for (int o = 0; o < numOct; ++o) {
 			int imgsiz = wtmp*htmp;
-			build_gradient_map_OCL(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp, cls);
+			build_gradient_map_OCL(get_gradient(o), blurred[o]+imgsiz, mem_grad, mem_blur, lvPerScale, wtmp, htmp, cls);
 			wtmp >>= 1;
 			htmp >>= 1;
 		}
@@ -485,6 +492,11 @@ void Sift::init_gradient_build()
 	}
 	c2 = omp_get_wtime();
 	printf("Calculate gradient %lf\n", c2-c1);
+
+	if (accel == Accel_OCL) {
+		clReleaseMemObject(mem_grad);
+		clReleaseMemObject(mem_blur);
+	}
 }
 
 void Sift::init_gradient()
@@ -630,7 +642,7 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 		
 		clReleaseMemObject(kps_d);
 		clReleaseMemObject(magAndThetas_d);
-	break;
+		break;
 	}
 	c2 = omp_get_wtime();
 	printf("Calculate angles %lf\n", c2-c1);
