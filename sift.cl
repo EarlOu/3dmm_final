@@ -191,16 +191,14 @@ __kernel void calc_kp_descriptors(
 	/* Center the scale space and the descriptor on the current keypoint.
 	 * Note that dpt is pointing to the bin of center (SBP/2,SBP/2,0).
 	 */
+
 	__global float const * pt = gradImage + (intX + intY * w) * 2;
 	__global float*       dpt = dess + (128 * X) + (NBP/2) * binyo + (NBP/2) * binxo ;
 
 #define atd(dbinx,dbiny,dbint) *(dpt + (dbint)*binto + (dbiny)*binyo + (dbinx)*binxo)
-#define MAX(a, b) (((a)>(b))?(a):(b))
-#define MIN(a, b) (((a)<(b))?(a):(b))
-#define ABS(a) (((a)>0)?(a):-(a))
 
-	for (int i = MAX(-W, 1-intY); i < MIN(W+1, h-1-intY); ++i) {
-		for (int j = MAX(-W, 1-intX); j < MIN(W+1, w-1-intX); ++j) {
+	for (int i = max(-W, 1-intY); i < min(W+1, h-1-intY); ++i) {
+		for (int j = max(-W, 1-intX); j < min(W+1, w-1-intX); ++j) {
 			// start copying siftpp() ... so 'dy' and 'dx' conform to its convention
 			float dx = j + intX - floatX;
 			float dy = i + intY - floatY;
@@ -251,9 +249,9 @@ __kernel void calc_kp_descriptors(
 							biny+dbiny <   (NBP/2) ) {
 							float weight = win
 								* mod
-								* ABS (1 - dbinx - rbinx)
-								* ABS (1 - dbiny - rbiny)
-								* ABS (1 - dbint - rbint) ;
+								* fabs (1 - dbinx - rbinx)
+								* fabs (1 - dbiny - rbiny)
+								* fabs (1 - dbint - rbint) ;
 
 							atd(binx+dbinx, biny+dbiny, (bint+dbint) % NBO) += weight ;
 						}
@@ -264,9 +262,6 @@ __kernel void calc_kp_descriptors(
 	}
 	regularize_feature(dess + 128 * X);
 #undef atd
-#undef MAX
-#undef MIN
-#undef ABS
 }
 
 __kernel void calc_angle(
