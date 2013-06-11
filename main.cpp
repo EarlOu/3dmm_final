@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
 	}
 
 	printf("Non_Accel Version\n");
-	Sift s1(img1, w, h, Accel_None, 0, 3, 3, false);
+	Sift s1(img1, w, h, Accel_None, 0, 4, 3, false);
 	vector<Keypoint> kps1 = s1.extract_keypoints(0.005f, 10.0f);
 	Descriptor* des1 = new Descriptor[kps1.size()];
 	s1.calc_kp_angles(&(kps1.front()),kps1.size());
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
 		img2[i] = p[i] * inv255;
 	}
 	printf("OMP_Accel Version\n");
-	Sift s2(img2, w, h, Accel_OMP, 0, 3, 3, false);
+	Sift s2(img2, w, h, Accel_OMP, 0, 4, 3, false);
 	vector<Keypoint> kps2 = s2.extract_keypoints(0.005f, 10.0f);
 	Descriptor* des2 = new Descriptor[kps2.size()];
 	s2.calc_kp_angles(&(kps2.front()),kps2.size());
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
 	}
 
 	printf("OCL_Accel Version\n");
-	Sift s3(img3, w, h, Accel_OCL, 0, 3, 3, false);
+	Sift s3(img3, w, h, Accel_OCL, 0, 4, 3, false);
 	vector<Keypoint> kps3 = s3.extract_keypoints(0.005f, 10.0f);
 	Descriptor* des3 = new Descriptor[kps3.size()];
 	s3.calc_kp_angles(&(kps3.front()),kps3.size());

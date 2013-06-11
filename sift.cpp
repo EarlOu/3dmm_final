@@ -158,13 +158,14 @@ void Sift::init_gaussian_build()
 		mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 		mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	}
+	printf("Calculate Gaussian\n");
 	double total_time = 0.0f;
 	for (int o = 0; o < numOct; ++o) {
 		float sigma = dsigma0;
 		int imsiz = wtmp*htmp;
+		double c1, c2;
+		c1 = omp_get_wtime();
 		for(int s = 0 ; s <= lvPerScale+1; ++s) {
-			double c1, c2;
-			c1 = omp_get_wtime();
 			switch (accel) {
 			case Accel_None:
 				gaussian_blur(
@@ -192,11 +193,12 @@ void Sift::init_gaussian_build()
 				ABORT_IF(cle != CL_SUCCESS, "Cannot read blurred result\n");
 				break;
 			}
-			c2 = omp_get_wtime();
-			printf("Calculate Gaussian blur (o=%d, s=%d): %lf (sec)\n", o, s, c2-c1);
-			total_time += c2 - c1;
 			sigma *= dsigmar;
 		}
+
+		c2 = omp_get_wtime();
+		printf("%d\t%lf\n", imsiz, c2-c1);
+		total_time += c2 - c1;
 
 		if (o != numOct-1) {
 			downSample(blurred[o+1], blurred[o]+imsiz*lvPerScale, wtmp, htmp, 2);
@@ -221,7 +223,7 @@ void Sift::init_gaussian_dog()
 {
 	int wtmp = wmax;
 	int htmp = hmax;
-
+	printf("Calculate DoG\n");
 	double total_time = 0.0f;
 	for (int o = 0; o < numOct; ++o) {
 		double c1, c2;
@@ -237,11 +239,11 @@ void Sift::init_gaussian_dog()
 			diff_OCL(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp, cls);
 			break;
 		}
+		c2 = omp_get_wtime();
+		printf("%d\t%lf\n", wtmp * htmp, c2-c1);
+		total_time += c2 - c1;
 		wtmp >>= 1;
 		htmp >>= 1;
-		c2 = omp_get_wtime();
-		printf("Calculate diff kernel (o=%d): %lf (sec)\n", o, c2-c1);
-		total_time += c2 - c1;
 	}
 	printf("Total time for diff kernel %lf (sec)\n", total_time);
 
@@ -463,38 +465,27 @@ void Sift::init_gradient_build()
 		mem_blur = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, lvPerScale*sizeof(float)*wmax*hmax, NULL, NULL);
 	}
 
-	double total_time;
+	printf("Calculate Gradient\n");
+	double total_time = 0;
 	for (int o=0; o<numOct; ++o) {
 		c1 = omp_get_wtime();
+		int imgsiz = wtmp*htmp;
 		switch (accel) {
 		case Accel_None:
-			for (int o = 0; o < numOct; ++o) {
-				int imgsiz = wtmp*htmp;
-				build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
-				wtmp >>= 1;
-				htmp >>= 1;
-			}
+			build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 			break;
 		case Accel_OMP:
-			for (int o = 0; o < numOct; ++o) {
-				int imgsiz = wtmp*htmp;
-				build_gradient_map_OMP(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
-				wtmp >>= 1;
-				htmp >>= 1;
-			}
+			build_gradient_map_OMP(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 			break;
 		case Accel_OCL:
-			for (int o = 0; o < numOct; ++o) {
-				int imgsiz = wtmp*htmp;
-				build_gradient_map_OCL(get_gradient(o), blurred[o]+imgsiz, mem_grad, mem_blur, lvPerScale, wtmp, htmp, cls);
-				wtmp >>= 1;
-				htmp >>= 1;
-			}
+			build_gradient_map_OCL(get_gradient(o), blurred[o]+imgsiz, mem_grad, mem_blur, lvPerScale, wtmp, htmp, cls);
 			break;
 		}
 		c2 = omp_get_wtime();
-		printf("Calculate gradient (o=%d): %lf (sec)\n", o, c2-c1);
+		printf("%d\t%lf\n", imgsiz, c2-c1);
 		total_time += c2 - c1;
+		wtmp >>= 1;
+		htmp >>= 1;
 	}
 	printf("Total time for gradient %lf (sec)\n", total_time);
 
@@ -852,6 +843,7 @@ void Sift::calc_kp_descriptors_OCL(const struct Keypoint* kps, int n, struct Des
 	// Read back the results from the device to verify the output
     cle = clEnqueueReadBuffer(cls->cqueue, dess_d, CL_TRUE, 0, sizeof(float) * 128 * n, dess, 0, NULL, NULL);
 	ABORT_IF(cle != CL_SUCCESS, "Cannot read from device\n");
+
 	clReleaseMemObject(kps_d);
 	clReleaseMemObject(dess_d);
 	clReleaseMemObject(magAndThetas_d);
