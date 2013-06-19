@@ -16,16 +16,27 @@ struct Descriptor {
 	void regularize();
 };
 
-enum AccerModel {
+enum AccerType {
 	Accel_None = 0,
 	Accel_OMP,
 	Accel_OCL
 };
 
+struct AccerModel {
+	AccerType gaussian;
+	AccerType dog;
+	AccerType gradient;
+	AccerType angle;
+	AccerType descriptor;
+};
+
+static const AccerModel AccerNoneAll = {Accel_None, Accel_None, Accel_None, Accel_None, Accel_None};
+
 class Sift {
 public:
 	Sift(
-		float *_img, int _w, int _h, AccerModel acc = Accel_None,
+		float *_img, int _w, int _h,
+		AccerModel acc = AccerNoneAll,
 		int _octMin = -1, int _numOct = 3, int _lvPerScale = 3,
 		bool _dumpImage = false
 	);

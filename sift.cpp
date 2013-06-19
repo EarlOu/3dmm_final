@@ -38,7 +38,13 @@ Sift::Sift(
 	dumpImage = _dumpImage;
 
 	cls = new CLStruct;
-	if (accel == Accel_OCL) {
+	if (
+		accel.gaussian == Accel_OCL ||
+		accel.dog == Accel_OCL ||
+		accel.gradient == Accel_OCL ||
+		accel.angle == Accel_OCL ||
+		accel.descriptor == Accel_OCL
+	) {
 		cl_int cle;
 
 		cle = clGetPlatformIDs(1, &cls->platform, NULL);
@@ -154,7 +160,7 @@ void Sift::init_gaussian_build()
 	float dsigmar = sigmak;
 	cl_mem mem_img;
 	cl_mem mem_buf;
-	if (accel == Accel_OCL) {
+	if (accel.gaussian == Accel_OCL) {
 		mem_img = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 		mem_buf = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, sizeof(float)*wmax*hmax, NULL, NULL);
 	}
@@ -166,7 +172,7 @@ void Sift::init_gaussian_build()
 		double c1, c2;
 		c1 = omp_get_wtime();
 		for(int s = 0 ; s <= lvPerScale+1; ++s) {
-			switch (accel) {
+			switch (accel.gaussian) {
 			case Accel_None:
 				gaussian_blur(
 					blurred[o]+imsiz*(s+1), blurred[o]+imsiz*s,
@@ -210,7 +216,7 @@ void Sift::init_gaussian_build()
 
 	printf("Total time for Gaussian blur: %lf (sec)\n", total_time);
 
-	if (accel == Accel_OCL) {
+	if (accel.gaussian == Accel_OCL) {
 		clReleaseMemObject(mem_img);
 		clReleaseMemObject(mem_buf);
 	}
@@ -228,7 +234,7 @@ void Sift::init_gaussian_dog()
 	for (int o = 0; o < numOct; ++o) {
 		double c1, c2;
 		c1 = omp_get_wtime();
-		switch (accel) {
+		switch (accel.dog) {
 		case Accel_None:
 			diff(dogs[o], blurred[o], lvPerScale+3, wtmp, htmp);
 			break;
@@ -460,7 +466,7 @@ void Sift::init_gradient_build()
 	double c1, c2;
 	cl_mem mem_grad;
 	cl_mem mem_blur;
-	if (accel == Accel_OCL) {
+	if (accel.gradient == Accel_OCL) {
 		mem_grad = clCreateBuffer(cls->context, CL_MEM_READ_WRITE, 2*lvPerScale*sizeof(float)*wmax*hmax, NULL, NULL);
 		mem_blur = clCreateBuffer(cls->context, CL_MEM_READ_ONLY, lvPerScale*sizeof(float)*wmax*hmax, NULL, NULL);
 	}
@@ -470,7 +476,7 @@ void Sift::init_gradient_build()
 	for (int o=0; o<numOct; ++o) {
 		c1 = omp_get_wtime();
 		int imgsiz = wtmp*htmp;
-		switch (accel) {
+		switch (accel.gradient) {
 		case Accel_None:
 			build_gradient_map(get_gradient(o), blurred[o]+imgsiz, lvPerScale, wtmp, htmp);
 			break;
@@ -489,7 +495,7 @@ void Sift::init_gradient_build()
 	}
 	printf("Total time for gradient %lf (sec)\n", total_time);
 
-	if (accel == Accel_OCL) {
+	if (accel.gradient == Accel_OCL) {
 		clReleaseMemObject(mem_grad);
 		clReleaseMemObject(mem_blur);
 	}
@@ -579,6 +585,7 @@ void Sift::calc_kp_angle(Keypoint &kp)
 	float dx = 0.5 * (right - left);
 	float dxx = (right + left - (2 * self));
 	kp.orient = (maxBinIndex + 0.5 - (dx / dxx)) * (2 * M_PI / histSize);
+	printf("%d %d %d %f\n", intX, intY, s, kp.orient);
 #undef histSize
 }
 
@@ -586,7 +593,7 @@ void Sift::calc_kp_angles(Keypoint *kps, int n)
 {
 	double c1, c2;
 	c1 = omp_get_wtime();
-	switch (accel) {
+	switch (accel.angle) {
 	case Accel_None:
 		for (int i = 0; i < n; ++i) {
 			calc_kp_angle(*kps);
@@ -786,7 +793,7 @@ void Sift::calc_kp_descriptors(const Keypoint *kps, int n, Descriptor *dess)
 {
 	double c1, c2;
 	c1 = omp_get_wtime();
-	switch (accel) {
+	switch (accel.descriptor) {
 	case Accel_None:
 		for (int i = 0; i < n; ++i) {
 			calc_kp_descriptor(*kps, *dess);
