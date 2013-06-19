@@ -361,7 +361,7 @@ __kernel void build_gradient_map(
 	int idx = get_global_id(0);
 	if (idx < 1 || idx > w-2) return;
 
-	map += 2 * idx;
+	map += idx;
 	blurred += idx;
 
 	for (int s = 0; s < _s; ++s) {
